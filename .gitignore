@@ -1,0 +1,8 @@
+# Versiones intermedias que fueron quedando durante el desarrollo.
+# Siguen en disco, pero no tiene sentido versionarlas: para eso está git.
+*.bak
+
+# Entorno
+node_modules/
+.DS_Store
+Thumbs.db

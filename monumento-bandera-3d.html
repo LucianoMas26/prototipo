@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monumento a la Bandera 3D — Terrarium + OSM</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:rgba(16,22,31,.88); --fg:#e6edf3; --muted:#8b949e;
+    --accent:#ff8a3d; --ok:#3fb950; --warn:#d29922; --err:#f85149; --line:#2a323d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+
+  .panel{position:absolute;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:12px 14px;backdrop-filter:blur(8px);max-width:min(340px,42vw)}
+  #hud{top:12px;left:12px}
+  #legend{bottom:12px;left:12px}
+  #help{bottom:12px;right:12px;max-width:260px;color:var(--muted)}
+  h1{font-size:13px;margin:0 0 8px;letter-spacing:.3px}
+  h1 small{display:block;font-weight:400;color:var(--muted);font-size:11px;letter-spacing:0}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:1px 0}
+  .row b{font-weight:600}
+  .k{color:var(--muted)}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;
+      vertical-align:-1px;border:1px solid rgba(255,255,255,.25)}
+  hr{border:0;border-top:1px solid var(--line);margin:9px 0}
+  label.chk{display:flex;align-items:center;gap:7px;padding:2px 0;cursor:pointer;color:var(--muted)}
+  label.chk input{accent-color:var(--accent)}
+  .rng{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--muted)}
+  .rng input{flex:1}
+  #status{color:var(--muted)}
+  .tiny{color:var(--muted);font-size:11px;line-height:1.5;margin:2px 0 0;word-spacing:4px}
+  .tiny b{color:var(--fg);font-weight:600}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  #splash{position:absolute;inset:0;display:grid;place-items:center;background:#0d1117;
+    z-index:20;transition:opacity .5s;text-align:center}
+  #splash .bar{width:260px;height:3px;background:#222c38;border-radius:3px;margin:14px auto 0;overflow:hidden}
+  #splash .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  kbd{background:#1b232e;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
+      padding:0 4px;color:var(--fg)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud" class="panel">
+  <h1>Monumento a la Bandera — Rosario
+    <small>Mapzen Terrarium DEM + OpenStreetMap (Overpass)</small></h1>
+  <div id="status">iniciando…</div>
+  <hr>
+  <div class="row"><span class="k">DEM</span><b id="s-dem">—</b></div>
+  <div class="row"><span class="k">Elevación</span><b id="s-ele">—</b></div>
+  <div class="row"><span class="k">Edificios</span><b id="s-bld">—</b></div>
+  <div class="row"><span class="k">building:part</span><b id="s-part">—</b></div>
+  <div class="row"><span class="k">Superficies</span><b id="s-surf">—</b></div>
+  <div class="row"><span class="k">Terrazas</span><b id="s-ter">—</b></div>
+  <div class="row"><span class="k">Cubierto</span><b id="s-rub">—</b></div>
+  <div class="row"><span class="k">Maleza</span><b id="s-grass">—</b></div>
+  <div id="s-layers" class="tiny">—</div>
+  <hr>
+  <label class="chk"><input type="checkbox" id="c-surf" checked> Superficies OSM (parques, agua, calles)</label>
+  <label class="chk"><input type="checkbox" id="c-raster"> Ortofoto / mapa sobre el terreno</label>
+  <label class="chk"><input type="checkbox" id="c-wire"> Malla del terreno (wireframe)</label>
+  <label class="chk"><input type="checkbox" id="c-bld" checked> Edificios</label>
+  <label class="chk"><input type="checkbox" id="c-grass" checked> Maleza</label>
+  <div class="rng"><span>Terrazas</span>
+    <input type="range" id="r-ter" min="0" max="100" step="5" value="30">
+    <b id="r-ter-v">30%</b></div>
+  <div class="rng"><span>Alcance terrazas</span>
+    <input type="range" id="r-tg" min="30" max="400" step="10" value="150">
+    <b id="r-tg-v">150 m</b></div>
+  <div class="rng"><span>Maleza</span>
+    <input type="range" id="r-gd" min="0" max="30" step="1" value="9">
+    <b id="r-gd-v">0.09 /m²</b></div>
+  <div class="rng"><span>Altura maleza</span>
+    <input type="range" id="r-gh" min="10" max="150" step="5" value="55">
+    <b id="r-gh-v">0.55 m</b></div>
+  <div class="rng"><span>Sedimento</span>
+    <input type="range" id="r-rub" min="0" max="250" step="5" value="100">
+    <b id="r-rub-v">1.00 m</b></div>
+  <div class="rng"><span>Aplanado</span>
+    <input type="range" id="r-flat" min="0" max="100" step="5" value="65">
+    <b id="r-flat-v">65%</b></div>
+  <div class="rng"><span>Exag. vertical</span>
+    <input type="range" id="r-exag" min="1" max="6" step="0.1" value="1">
+    <b id="r-exag-v">1.0×</b></div>
+</div>
+
+<div id="legend" class="panel">
+  <div><span class="sw" style="background:#c08457"></span>base / basamento (&lt; 18 m)</div>
+  <div><span class="sw" style="background:#d9a878"></span>cuerpo escalonado (18–40 m)</div>
+  <div><span class="sw" style="background:#efe9df"></span>torre / remate (&gt; 40 m)</div>
+  <div><span class="sw" style="background:#aeb4bc"></span>edificio genérico OSM</div>
+  <div><span class="sw" style="background:#c2a98a"></span>escalera (highway=steps) con marcas de escalón</div>
+  <div><span class="sw" style="background:#70603f"></span>sedimento · <span class="sw" style="background:#546f38"></span>maleza — tapan el solado donde se acumulan</div>
+  <div><span class="sw" style="background:#4a5c22"></span>matas instanciadas, sembradas sobre el sedimento</div>
+  <div><span class="sw" style="background:#62914a"></span>parque / césped · <span class="sw" style="background:#2e6d97"></span>agua · <span class="sw" style="background:#9c8461"></span>muelle</div>
+  <div><span class="sw" style="background:#b4ada0"></span>calzada · <span class="sw" style="background:#cdc6b7"></span>vereda · <span class="sw" style="background:#7b7a75"></span>estacionamiento</div>
+  <div><span class="sw" style="background:linear-gradient(135deg,#E6E4D8,#8fa1b5)"></span>color real de OSM (<code>building:colour</code>)</div>
+</div>
+
+<div id="help" class="panel">
+  <kbd>arrastrar</kbd> orbitar · <kbd>rueda</kbd> zoom · <kbd>click der</kbd> desplazar<br>
+  <kbd>R</kbd> reencuadrar · <kbd>W</kbd> wireframe
+</div>
+
+<div id="splash">
+  <div>
+    <div style="font-size:15px">Monumento a la Bandera · Rosario</div>
+    <div style="color:#8b949e;margin-top:6px" id="splash-txt">cargando…</div>
+    <div class="bar"><i id="splash-bar"></i></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+/* ==========================================================================
+   PROTOTIPO: Terreno real (Mapzen Terrarium) + vectores OSM (Overpass)
+   Zona: Monumento Nacional a la Bandera, Rosario, Argentina.
+
+   Pipeline:
+     1) bbox geografico  ->  rango de teselas XYZ (Web Mercator)
+     2) mosaico Terrarium (PNG RGB)  ->  ImageData  ->  altura por pixel
+        height = (R * 256 + G + B / 256) - 32768      [formula oficial]
+     3) PlaneGeometry muy subdividido, desplazamiento de vertices en +Y
+     4) Overpass API -> building / building:part / highway=steps
+     5) ExtrudeGeometry por parte, apoyada en la cota real del terreno
+     6) red de circulacion y superficies drapeadas sobre el terreno
+
+   Sistema de coordenadas del mundo: metros, Y = arriba, -Z = norte.
+   ========================================================================== */
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { TessellateModifier } from 'three/addons/modifiers/TessellateModifier.js';
+
+/* ----------------------------- 0. CONFIGURACION --------------------------- */
+
+const CFG = {
+  // bbox pedido: sur, oeste, norte, este
+  bbox: { s: -32.952, w: -60.635, n: -32.943, e: -60.625 },
+
+  // Los datos vectoriales se piden con margen alrededor del bbox visible: sin
+  // eso, las relaciones multipoligono que se salen del recuadro llegan con
+  // miembros faltantes y sus anillos no cierran (p.ej. Parque Nacional de la
+  // Bandera, que perdia 2 de 17 miembros).
+  dataPad: 0.0015,  // ~165 m
+
+  demZoom:    14,   // zoom de las teselas Terrarium (~2.4 km/tesela en Rosario)
+  rasterZoom: 17,   // zoom del mapa raster que se pinta sobre el terreno
+  segments:   512,  // subdivisiones del PlaneGeometry (512x512 = 263k vertices)
+
+  levelHeight: 3.2,             // metros por building:levels si no hay tag height
+  defaultBuildingHeight: 8,
+
+  // SRTM (origen de Terrarium) es un modelo de SUPERFICIE: incluye techos de
+  // edificios y ruido de restitucion. En una ciudad plana como Rosario eso
+  // produce un terreno bacheado que no existe.
+  //
+  // El tratamiento tiene dos escalas, ambas con box blur de radio en pixeles
+  // de DEM (~9 m/px a esta latitud):
+  //   detailRadius -> quita el ruido fino sin tocar el relieve
+  //   baseRadius   -> define que se considera "relieve de gran escala"
+  //   relief       -> cuanto del detalle sobrevive. 1 = solo se quita ruido,
+  //                   0 = queda unicamente la forma de gran escala (la barranca)
+  dem: { detailRadius: 1, baseRadius: 16, passes: 3, relief: 0.35 },
+
+  // Sedimento y maleza. El terreno se levanta de forma irregular por encima
+  // del solado, que quedo drapeado sobre el terreno LIMPIO: donde el sedimento
+  // supera el espesor de la vereda, el suelo se la traga; donde no llega, la
+  // calle asoma. El tapado sale de esa diferencia, no de recortar geometria.
+  rubble: {
+    amount:     1.00,  // profundidad maxima de sedimento, en metros
+    patchScale: 26,    // tamano de los claros y los montones (m)
+    octaves:    4,
+    bare:       0.25,  // fraccion del ruido que queda por debajo del solado
+    slopeFree:  0.22,  // pendiente a partir de la cual no se acumula nada
+    talus:      0.55,  // sedimento extra acumulado contra los edificios (m)
+    // Las escaleras son lo que menos confianza da y lo que peor se ve asomando:
+    // se entierran a proposito, con un monton propio sobre la traza, en vez de
+    // depender de que el manchon de ruido caiga justo encima.
+    stairMul:   1.0,   // multiplo de `amount` volcado sobre las escaleras
+    // Medido sobre las 36 escaleras del bbox: con stairMul 1,0 quedan las 36
+    // enterradas. Para que alguna asome hay que bajar a 0,7 con vary 0,85
+    // (31 enteras, 4 a medias, 1 a la vista) -- el umbral es
+    // amount * stairMul * (1 - stairVary) < 0,305 m, el espesor de la senda.
+    stairVary:  0.45,  // variacion del monton a lo largo de la traza
+    seed:       1337
+  },
+
+  // Terrazas. Una escalera no es solo un objeto: es la evidencia de que las
+  // dos zonas que conecta estan a distinta altura. Se impone ese salto y se
+  // deja que el terreno de cada lado suba o baje en bloque.
+  terrace: {
+    fraction:  0.30,   // porcion del desnivel declarado por OSM que se aplica
+    riser:     0.19,   // metros por escalon, para convertir step_count a altura
+    gate:      150,    // largo del frente de terraza a cada lado (m)
+    iters:     400,    // relajacion del campo
+    grid:      192,    // resolucion del campo
+    maxJump:   6       // tope de salto por escalera (m)
+  },
+
+  // Maleza: matas instanciadas sembradas sobre el sedimento. No reemplaza al
+  // color por vertice, se suma; el tinte sigue marcando el manto y las matas
+  // le dan volumen y silueta.
+  grass: {
+    density:      0.09,   // matas por metro cuadrado de zona apta
+    height:       0.55,   // altura media de la mata (m)
+    heightVary:   0.55,   // variacion relativa de altura
+    minSediment:  0.10,   // sedimento minimo para que prenda (m)
+    fullSediment: 0.55,   // sedimento a partir del cual crece a densidad plena
+    blades:       3,      // hojas por mata
+    maxInstances: 240000, // tope duro, para no colgar la GPU
+    wind:         0.10,   // amplitud del vaiven, en unidades de altura
+    seed:         2024
+  },
+
+
+
+  // Endpoints Terrarium. Se prueban en orden; si todos fallan -> DEM sintetico.
+  demEndpoints: [
+    'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+    'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'
+  ],
+  rasterEndpoints: [
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+  ],
+  overpassEndpoints: [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.osm.jp/api/interpreter'
+  ],
+  // Respaldo: la API principal de OSM. Devuelve XML crudo del bbox y corre
+  // sobre infraestructura distinta de Overpass, asi que sobrevive a sus caidas.
+  // Va SEGUNDA a proposito: la politica de uso de OSM reserva esta API para
+  // edicion y pide usar Overpass para consultas. Un bbox chico es aceptable
+  // como plan B, no como fuente habitual.
+  osmApi: 'https://api.openstreetmap.org/api/0.6/map',
+  fetchTimeout: 30000
+};
+
+const ui = {
+  status:    document.getElementById('status'),
+  splash:    document.getElementById('splash'),
+  splashTxt: document.getElementById('splash-txt'),
+  splashBar: document.getElementById('splash-bar'),
+  set(msg, cls = '') {
+    this.status.className = cls;
+    this.status.textContent = msg;
+    this.splashTxt.textContent = msg;
+  },
+  prog(p) { this.splashBar.style.width = (p * 100).toFixed(0) + '%'; },
+  stat(id, v) { document.getElementById(id).textContent = v; }
+};
+const fmt   = n => (Math.round(n * 10) / 10).toFixed(1);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/* --------------------- 1. WEB MERCATOR Y ARITMETICA DE TESELAS ------------ */
+
+const R_EARTH = 6378137;                  // radio de la esfera Web Mercator (EPSG:3857)
+const WORLD   = 2 * Math.PI * R_EARTH;    // 40.075.016,686 m
+
+const lon2mx = lon => R_EARTH * lon * Math.PI / 180;
+const lat2my = lat => R_EARTH * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2));
+const mx2lon = x   => x / R_EARTH * 180 / Math.PI;
+const my2lat = y   => (2 * Math.atan(Math.exp(y / R_EARTH)) - Math.PI / 2) * 180 / Math.PI;
+
+/** Indices de tesela XYZ (slippy map) para una coordenada geografica. */
+function tileIndex(lon, lat, z) {
+  const n = 2 ** z, r = lat * Math.PI / 180;
+  return {
+    x: Math.floor((lon + 180) / 360 * n),
+    y: Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n)
+  };
+}
+
+/** Rango de teselas que cubre un bbox, con la extension mercator del mosaico. */
+function tileRange(bbox, z) {
+  const a = tileIndex(bbox.w, bbox.n, z);   // esquina NO
+  const b = tileIndex(bbox.e, bbox.s, z);   // esquina SE
+  const n = 2 ** z, span = WORLD / n;
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
+  const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  return {
+    z, x0, x1, y0, y1,
+    cols: x1 - x0 + 1, rows: y1 - y0 + 1,
+    // extension mercator del mosaico completo (alineada a teselas)
+    minX: -WORLD / 2 + x0 * span,
+    maxX: -WORLD / 2 + (x1 + 1) * span,
+    maxY:  WORLD / 2 - y0 * span,
+    minY:  WORLD / 2 - (y1 + 1) * span
+  };
+}
+
+/** Carga una imagen con CORS habilitado, probando varios endpoints en orden. */
+function loadTile(endpoints, z, x, y) {
+  return new Promise((resolve, reject) => {
+    let i = 0;
+    const tryNext = () => {
+      if (i >= endpoints.length) return reject(new Error('tesela ' + z + '/' + x + '/' + y));
+      const url = endpoints[i++].replace('{z}', z).replace('{x}', x).replace('{y}', y);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';        // imprescindible para poder leer getImageData()
+      img.onload  = () => resolve(img);
+      img.onerror = tryNext;
+      img.src = url;
+    };
+    tryNext();
+  });
+}
+
+/** Descarga un rango de teselas y las compone en un unico canvas. */
+async function buildMosaic(endpoints, range, tileSize, onProgress) {
+  const cv = document.createElement('canvas');
+  cv.width  = range.cols * tileSize;
+  cv.height = range.rows * tileSize;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = false;
+
+  const jobs = [];
+  for (let y = range.y0; y <= range.y1; y++)
+    for (let x = range.x0; x <= range.x1; x++) jobs.push({ x, y });
+
+  let done = 0, failed = 0;
+  await Promise.all(jobs.map(async ({ x, y }) => {
+    try {
+      const img = await loadTile(endpoints, range.z, x, y);
+      ctx.drawImage(img, (x - range.x0) * tileSize, (y - range.y0) * tileSize,
+                    tileSize, tileSize);
+    } catch { failed++; }
+    if (onProgress) onProgress(++done / jobs.length);
+  }));
+
+  if (failed === jobs.length) throw new Error('todas las teselas fallaron');
+  return { canvas: cv, ctx, failed, total: jobs.length };
+}
+
+/* ------------------------- 2. MUESTREADOR DE ELEVACION -------------------- */
+/**
+ * Decodifica el mosaico Terrarium a un Float32Array de alturas y ofrece
+ * muestreo bilineal en coordenadas mercator.
+ */
+class TerrariumSampler {
+  constructor(imageData, range) {
+    const { width: w, height: h, data } = imageData;
+    this.w = w; this.h = h; this.range = range;
+    this.heights = new Float32Array(w * h);
+    this.min =  Infinity;
+    this.max = -Infinity;
+
+    for (let i = 0, p = 0; i < this.heights.length; i++, p += 4) {
+      // ---------- formula oficial Mapzen Terrarium ----------
+      const el = (data[p] * 256 + data[p + 1] + data[p + 2] / 256) - 32768;
+      // los pixeles de una tesela que no cargo quedan con alpha 0 -> NaN
+      const v = data[p + 3] === 0 ? NaN : el;
+      this.heights[i] = v;
+      if (!Number.isNaN(v)) {
+        if (v < this.min) this.min = v;
+        if (v > this.max) this.max = v;
+      }
+    }
+    if (!Number.isFinite(this.min)) { this.min = 0; this.max = 0; }
+
+    // relleno de huecos para que el plano no se rompa donde falto una tesela
+    const fill = (this.min + this.max) / 2;
+    for (let i = 0; i < this.heights.length; i++)
+      if (Number.isNaN(this.heights[i])) this.heights[i] = fill;
+
+    // copia intacta: prepare() siempre parte de aca, nunca del resultado
+    // anterior, para que mover el control no acumule suavizado
+    this.raw = Float32Array.from(this.heights);
+  }
+
+  /**
+   * Box blur separable de radio r con suma deslizante: O(n) por pasada sea
+   * cual sea el radio, asi que se pueden usar radios grandes sin costo. Tres
+   * pasadas aproximan una gaussiana.
+   */
+  static blur(a, w, h, r, passes) {
+    if (r < 1) return;
+    const tmp = new Float32Array(a.length), inv = 1 / (2 * r + 1);
+    for (let p = 0; p < passes; p++) {
+      for (let y = 0; y < h; y++) {                       // horizontal
+        const row = y * w;
+        let sum = 0;
+        for (let x = -r; x <= r; x++) sum += a[row + Math.min(w - 1, Math.max(0, x))];
+        for (let x = 0; x < w; x++) {
+          tmp[row + x] = sum * inv;
+          sum += a[row + Math.min(w - 1, x + r + 1)] - a[row + Math.max(0, x - r)];
+        }
+      }
+      for (let x = 0; x < w; x++) {                       // vertical
+        let sum = 0;
+        for (let y = -r; y <= r; y++) sum += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+        for (let y = 0; y < h; y++) {
+          a[y * w + x] = sum * inv;
+          sum += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+        }
+      }
+    }
+  }
+
+  /**
+   * Reconstruye las alturas a partir del DEM crudo.
+   *   terreno = base + (detalle - base) * relief
+   * Con relief=0 queda solo la forma de gran escala; con 1, el DEM denso sin
+   * ruido. Siempre parte del crudo, asi que se puede llamar cuantas veces haga
+   * falta sin que el suavizado se acumule.
+   */
+  prepare({ detailRadius, baseRadius, passes, relief }) {
+    const detail = Float32Array.from(this.raw);
+    TerrariumSampler.blur(detail, this.w, this.h, detailRadius, passes);
+    const base = Float32Array.from(detail);
+    TerrariumSampler.blur(base, this.w, this.h, baseRadius, passes);
+    for (let i = 0; i < this.heights.length; i++)
+      this.heights[i] = base[i] + (detail[i] - base[i]) * relief;
+    this.refreshRange();
+  }
+
+  /** Recalcula el rango de alturas tras modificar el buffer. */
+  refreshRange() {
+    this.min = Infinity; this.max = -Infinity;
+    for (const v of this.heights) {
+      if (v < this.min) this.min = v;
+      if (v > this.max) this.max = v;
+    }
+  }
+
+
+  /** Altura (m s.n.m.) en una posicion mercator, interpolada bilinealmente. */
+  atMercator(mx, my) {
+    const r = this.range;
+    const fx = (mx - r.minX) / (r.maxX - r.minX) * (this.w - 1);
+    const fy = (r.maxY - my) / (r.maxY - r.minY) * (this.h - 1);   // Y mercator invertido
+    const x0 = Math.min(this.w - 2, Math.max(0, Math.floor(fx)));
+    const y0 = Math.min(this.h - 2, Math.max(0, Math.floor(fy)));
+    const tx = Math.min(1, Math.max(0, fx - x0));
+    const ty = Math.min(1, Math.max(0, fy - y0));
+    const H = this.heights, w = this.w;
+    const h00 = H[y0 * w + x0],       h10 = H[y0 * w + x0 + 1];
+    const h01 = H[(y0 + 1) * w + x0], h11 = H[(y0 + 1) * w + x0 + 1];
+    return (h00 * (1 - tx) + h10 * tx) * (1 - ty) +
+           (h01 * (1 - tx) + h11 * tx) * ty;
+  }
+}
+
+/** DEM sintetico de respaldo (sin red o con CORS bloqueado): relieve plausible. */
+function syntheticSampler(range, base = 24) {
+  const w = 256, h = 256;
+  const img = { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const u = x / w, v = y / h;
+    // barranca hacia el Parana (este) + ondulacion suave, tipico de Rosario
+    const el = base
+      + 9.0 * Math.max(0, Math.min(1, (0.78 - u) * 3))
+      + 1.6 * Math.sin(u * 9.1) * Math.cos(v * 7.3)
+      + 0.9 * Math.sin((u + v) * 17.0);
+    const e = el + 32768;                       // codificacion inversa Terrarium
+    const i = (y * w + x) * 4;
+    img.data[i]     = Math.floor(e / 256);
+    img.data[i + 1] = Math.floor(e % 256);
+    img.data[i + 2] = Math.floor((e - Math.floor(e)) * 256);
+    img.data[i + 3] = 255;
+  }
+  return new TerrariumSampler(img, range);
+}
+
+/* ------------------- 2bis. RUIDO COHERENTE (value noise) ------------------ */
+/**
+ * Ruido de valor con interpolacion suave y suma de octavas (fBm). Sin
+ * dependencias y determinista: la misma semilla da siempre el mismo mundo.
+ * Se usa para que el sedimento se acumule en manchones de tamano humano en vez
+ * de como ruido blanco.
+ */
+const hash2 = (i, j, seed) => {
+  let h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(seed, 83492791);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+};
+
+function valueNoise(x, z, seed) {
+  const i = Math.floor(x), j = Math.floor(z);
+  const fx = x - i, fz = z - j;
+  const ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
+  const a = hash2(i, j, seed),     b = hash2(i + 1, j, seed);
+  const c = hash2(i, j + 1, seed), d = hash2(i + 1, j + 1, seed);
+  return (a * (1 - ux) + b * ux) * (1 - uz) + (c * (1 - ux) + d * ux) * uz;
+}
+
+/** fBm normalizado a [0,1]. */
+function fbm(x, z, octaves, seed) {
+  let sum = 0, amp = 1, norm = 0, f = 1;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * valueNoise(x * f, z * f, seed + o * 101);
+    norm += amp; amp *= 0.5; f *= 2.07;
+  }
+  return sum / norm;
+}
+
+/* --------------------------- 3. MUNDO Y TRANSFORMACION -------------------- */
+/**
+ * Mercator deforma las distancias por 1/cos(lat). A la latitud de Rosario el
+ * factor es ~1.19, asi que multiplicamos por cos(lat) para trabajar en metros
+ * reales sobre el terreno. Las elevaciones del DEM ya estan en metros reales.
+ */
+const World = {
+  originX: 0, originY: 0, scale: 1,
+  init(centerLon, centerLat) {
+    this.originX = lon2mx(centerLon);
+    this.originY = lat2my(centerLat);
+    this.scale   = Math.cos(centerLat * Math.PI / 180);
+  },
+  // geografico -> mundo (metros, X este / Z sur)
+  toWorld(lon, lat) {
+    return {
+      x:  (lon2mx(lon) - this.originX) * this.scale,
+      z: -(lat2my(lat) - this.originY) * this.scale
+    };
+  },
+  // mundo -> mercator (para muestrear el DEM)
+  toMercator(x, z) {
+    return { mx: x / this.scale + this.originX, my: -z / this.scale + this.originY };
+  }
+};
+
+let dem = null;                       // TerrariumSampler activo
+/** Cota del terreno (m s.n.m.) en coordenadas de mundo. */
+const groundAt = (x, z) => {
+  const m = World.toMercator(x, z);
+  return dem.atMercator(m.mx, m.my);
+};
+
+/* ------------------------------ 4. ESCENA THREE --------------------------- */
+
+const container = document.getElementById('app');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fc3e8);
+scene.fog = new THREE.Fog(0x9fc3e8, 1400, 4200);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 20000);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.maxPolarAngle = Math.PI * 0.495;   // no permitir mirar desde abajo del suelo
+controls.minDistance = 20;
+controls.maxDistance = 3500;
+
+// --- Iluminacion: sol direccional con sombras + cielo/hemisferio + relleno ---
+const sun = new THREE.DirectionalLight(0xfff2e0, 2.4);
+sun.position.set(-420, 620, 380);           // sol del NO, sombras largas hacia el SE
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.6;
+{
+  const c = sun.shadow.camera, R = 700;
+  c.left = -R; c.right = R; c.top = R; c.bottom = -R;
+  c.near = 10;  c.far = 2200;
+  c.updateProjectionMatrix();
+}
+scene.add(sun, sun.target);
+scene.add(new THREE.HemisphereLight(0xbcd8ff, 0x5b5348, 1.1));
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+// Grupos para poder alternar visibilidad desde el HUD
+const gTerrain = new THREE.Group();
+const gSurf    = new THREE.Group();   // parques, agua, calzadas, veredas
+const gBuild   = new THREE.Group();
+scene.add(gTerrain, gSurf, gBuild);
+
+/* ------------------------------- 5. TERRENO ------------------------------- */
+/**
+ * PlaneGeometry muy subdividido, rotado a horizontal, con cada vertice
+ * desplazado en +Y segun la altura decodificada del Terrarium.
+ */
+let terrainMesh = null;
+let terrainBaseY = null;      // alturas sin exageracion, para el slider
+let exaggeration = 1;
+
+/**
+ * Parametros de la grilla del terreno. Hacen falta para poder muestrear la
+ * MISMA superficie que se dibuja: el DEM es bilineal continuo, pero la malla
+ * es una grilla de 384x384 que interpola linealmente entre vertices. Drapear
+ * con el valor del DEM deja las cintas por debajo de la malla en las zonas
+ * concavas -- y ahi es donde desaparecian calles y veredas.
+ */
+const TG = { x0: 0, z0: 0, dx: 1, dz: 1, nx: 1, nz: 1, ready: false };
+
+/** Muestreo bilineal de CUALQUIER grilla con la geometria del terreno. */
+function sampleGrid(arr, x, z) {
+  if (!TG.ready) return groundAt(x, z);
+  const gx = clamp((x - TG.x0) / TG.dx, 0, TG.nx);
+  const gz = clamp((z - TG.z0) / TG.dz, 0, TG.nz);
+  const i = Math.min(TG.nx - 1, Math.floor(gx));
+  const j = Math.min(TG.nz - 1, Math.floor(gz));
+  const fx = gx - i, fz = gz - j, W = TG.nx + 1;
+  const h00 = arr[j * W + i],       h10 = arr[j * W + i + 1];
+  const h01 = arr[(j + 1) * W + i], h11 = arr[(j + 1) * W + i + 1];
+  return (h00 * (1 - fx) + h10 * fx) * (1 - fz) + (h01 * (1 - fx) + h11 * fx) * fz;
+}
+
+/** Cota de la SUPERFICIE DIBUJADA del terreno (no del DEM) en (x,z). */
+const terrainSurfaceY = (x, z) => sampleGrid(terrainBaseY, x, z);
+
+/**
+ * Cotas del terreno SIN sedimento. El solado se drapea sobre esta copia, no
+ * sobre la superficie final: es lo que permite que el sedimento lo tape.
+ */
+let terrainCleanY = null;
+const pavementY = (x, z) => sampleGrid(terrainCleanY || terrainBaseY, x, z);
+
+
+function buildTerrain(extentRange, rasterTexture) {
+  // Extension del terreno = mosaico raster (alineado a teselas), en metros de mundo
+  const nw = World.toWorld(mx2lon(extentRange.minX), my2lat(extentRange.maxY));
+  const se = World.toWorld(mx2lon(extentRange.maxX), my2lat(extentRange.minY));
+  const width  = se.x - nw.x;
+  const depth  = se.z - nw.z;
+  const cx = (nw.x + se.x) / 2;
+  const cz = (nw.z + se.z) / 2;
+
+  const geo = new THREE.PlaneGeometry(width, depth, CFG.segments, CFG.segments);
+  geo.rotateX(-Math.PI / 2);            // XY -> XZ, normales hacia +Y
+
+  const pos = geo.attributes.position;
+  terrainBaseY = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + cx;
+    const z = pos.getZ(i) + cz;
+    const h = groundAt(x, z);
+    terrainBaseY[i] = h;
+    pos.setY(i, h);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+
+  // Arranca sin la ortofoto: las capas vectoriales se leen mejor en 3D y la
+  // tesela z17 estirada sobre 1,3 km se ve borrosa. El HUD la puede encender.
+  const mat = new THREE.MeshStandardMaterial({
+    map: null, color: 0x8a8578, roughness: 0.96, metalness: 0.0
+  });
+
+  // PlaneGeometry ordena los vertices por filas: indice = iy*(seg+1) + ix,
+  // con x creciente en ix y (tras rotateX) z creciente en iy.
+  TG.x0 = cx - width / 2; TG.z0 = cz - depth / 2;
+  TG.nx = CFG.segments;   TG.nz = CFG.segments;
+  TG.dx = width / TG.nx;  TG.dz = depth / TG.nz;
+  TG.ready = true;
+
+  terrainMesh = new THREE.Mesh(geo, mat);
+  terrainMesh.position.set(cx, 0, cz);
+  terrainMesh.receiveShadow = true;
+  terrainMesh.userData.tex = rasterTexture || null;   // para el toggle del HUD
+  gTerrain.add(terrainMesh);
+
+  // Falda lateral: bloque bajo el terreno para que no se vea como una lamina.
+  // Su cara superior queda justo en la cota minima del DEM, asi nunca asoma.
+  const skirtH = 60;
+  const skirtTop = dem.min - 0.05;
+  const skirt = new THREE.Mesh(
+    new THREE.BoxGeometry(width, skirtH, depth),
+    new THREE.MeshStandardMaterial({ color: 0x4b4438, roughness: 1 })
+  );
+  skirt.position.set(cx, skirtTop - skirtH / 2, cz);
+  gTerrain.add(skirt);
+
+  return { width, depth, cx, cz };
+}
+
+/** Reaplica la exageracion vertical al terreno (el slider del HUD). */
+function applyExaggeration(k) {
+  exaggeration = k;
+  if (!terrainMesh) return;
+  const pos = terrainMesh.geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++)
+    pos.setY(i, dem.min + (terrainBaseY[i] - dem.min) * k);
+  pos.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+  placeGrass();   // las matas leen la cota del terreno, que acaba de cambiar
+  // los objetos construidos se escalan igual respecto de la cota minima del DEM
+  for (const g of [gBuild]) {
+    g.scale.y = 1;
+    g.position.y = 0;
+    for (const o of g.children) {
+      if (o.userData.baseGround === undefined) continue;
+      const shift = (o.userData.baseGround - dem.min) * (k - 1);
+      o.position.y = o.userData.baseY + shift;
+    }
+  }
+}
+
+/* ------------------------------ 6. OVERPASS API --------------------------- */
+
+/** bbox ampliado con el margen de datos. */
+const padded = () => ({
+  s: CFG.bbox.s - CFG.dataPad, n: CFG.bbox.n + CFG.dataPad,
+  w: CFG.bbox.w - CFG.dataPad, e: CFG.bbox.e + CFG.dataPad
+});
+const PB = padded();
+
+const OVERPASS_QL = `
+[out:json][timeout:90];
+(
+  way["building"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["building:part"](${PB.s},${PB.w},${PB.n},${PB.e});
+  relation["building"](${PB.s},${PB.w},${PB.n},${PB.e});
+  relation["building:part"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["highway"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["leisure"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["landuse"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["natural"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["amenity"](${PB.s},${PB.w},${PB.n},${PB.e});
+  way["man_made"](${PB.s},${PB.w},${PB.n},${PB.e});
+  relation["leisure"](${PB.s},${PB.w},${PB.n},${PB.e});
+  relation["landuse"](${PB.s},${PB.w},${PB.n},${PB.e});
+  relation["natural"](${PB.s},${PB.w},${PB.n},${PB.e});
+);
+out body geom qt;
+`;
+
+/** Etiquetas que el visor sabe dibujar (filtro comun a las dos fuentes). */
+const isRelevant = t =>
+  !!(t.building || t['building:part'] || t.highway || t.leisure || t.landuse ||
+     t.natural || t.amenity || t.man_made || t['area:highway']);
+
+/** Consulta Overpass probando mirrors hasta que uno responda. */
+async function fetchOverpass() {
+  let lastErr;
+  for (const url of CFG.overpassEndpoints) {
+    try {
+      ui.set('consultando Overpass: ' + new URL(url).hostname + ' ...');
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(OVERPASS_QL),
+        signal: AbortSignal.timeout(CFG.fetchTimeout)
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      if (!json.elements) throw new Error('respuesta sin elements');
+      return json.elements;
+    } catch (e) {
+      console.warn('Overpass', new URL(url).hostname, '->', e.message);
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Overpass no disponible');
+}
+
+/**
+ * Respaldo: /api/0.6/map de la API principal de OSM. Devuelve XML crudo con
+ * TODOS los elementos del bbox; se traduce a la misma forma que entrega
+ * Overpass con "out geom" (ways con geometry, relaciones con members.geometry)
+ * para que processOSM() no note la diferencia.
+ */
+async function fetchOsmApi() {
+  const b = PB;
+  const url = CFG.osmApi + '?bbox=' + [b.w, b.s, b.e, b.n].join(',');
+  ui.set('Overpass caido: consultando api.openstreetmap.org ...', 'warn');
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(CFG.fetchTimeout * 2) });
+  if (!res.ok) throw new Error('OSM API HTTP ' + res.status);
+  const doc = new DOMParser().parseFromString(await res.text(), 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('XML invalido');
+
+  const tagsOf = el => {
+    const t = {};
+    for (const x of el.children) if (x.tagName === 'tag') t[x.getAttribute('k')] = x.getAttribute('v');
+    return t;
+  };
+
+  const nodes = new Map();
+  for (const n of doc.getElementsByTagName('node'))
+    nodes.set(n.getAttribute('id'),
+              { lat: +n.getAttribute('lat'), lon: +n.getAttribute('lon') });
+
+  const wayGeom = new Map(), out = [];
+  for (const w of doc.getElementsByTagName('way')) {
+    const geometry = [];
+    for (const c of w.children)
+      if (c.tagName === 'nd') {
+        const p = nodes.get(c.getAttribute('ref'));
+        if (p) geometry.push(p);
+      }
+    wayGeom.set(w.getAttribute('id'), geometry);
+    const tags = tagsOf(w);
+    if (isRelevant(tags))
+      out.push({ type: 'way', id: +w.getAttribute('id'), tags, geometry });
+  }
+
+  for (const r of doc.getElementsByTagName('relation')) {
+    const tags = tagsOf(r);
+    if (!isRelevant(tags)) continue;
+    const members = [];
+    for (const c of r.children) {
+      if (c.tagName !== 'member' || c.getAttribute('type') !== 'way') continue;
+      const g = wayGeom.get(c.getAttribute('ref'));   // puede faltar si cae fuera del bbox
+      if (g && g.length) members.push({ type: 'way', role: c.getAttribute('role'), geometry: g });
+    }
+    if (members.length) out.push({ type: 'relation', id: +r.getAttribute('id'), tags, members });
+  }
+  return out;
+}
+
+/** Overpass primero; si se cae entero, la API de OSM. */
+async function fetchOsmData() {
+  try {
+    return { elements: await fetchOverpass(), source: 'OpenStreetMap / Overpass' };
+  } catch (e) {
+    console.warn('Overpass agotado, usando la API de OSM:', e.message);
+    return { elements: await fetchOsmApi(), source: 'OpenStreetMap / API 0.6 (respaldo)' };
+  }
+}
+
+/* --------------------- 7. UTILIDADES GEOMETRICAS DE OSM ------------------- */
+
+/** Parsea valores tipo "70 m", "35'", "12.5" a metros. */
+function parseLength(v) {
+  if (v == null) return NaN;
+  const s = String(v).trim().toLowerCase();
+  let m = s.match(/^([\d.,]+)\s*(m|meter|metre|metros)?$/);
+  if (m) return parseFloat(m[1].replace(',', '.'));
+  m = s.match(/^([\d.,]+)\s*(ft|feet|')$/);             // pies
+  if (m) return parseFloat(m[1].replace(',', '.')) * 0.3048;
+  const f = parseFloat(s.replace(',', '.'));
+  return Number.isFinite(f) ? f : NaN;
+}
+
+/** Altura absoluta y arranque de una parte, segun las etiquetas OSM. */
+function heightOf(tags = {}) {
+  let top = parseLength(tags['height'] ?? tags['building:height'] ?? tags['est_height']);
+  if (!Number.isFinite(top)) {
+    const lv = parseFloat(tags['building:levels'] ?? tags['levels']);
+    if (Number.isFinite(lv)) top = lv * CFG.levelHeight;
+  }
+  if (!Number.isFinite(top)) top = CFG.defaultBuildingHeight;
+
+  let bottom = parseLength(tags['min_height']);
+  if (!Number.isFinite(bottom)) {
+    const ml = parseFloat(tags['building:min_level'] ?? tags['min_level']);
+    bottom = Number.isFinite(ml) ? ml * CFG.levelHeight : 0;
+  }
+  // un techo/cupula extra se suma al cuerpo
+  const roof = parseLength(tags['roof:height']);
+  if (Number.isFinite(roof) && tags['height'] == null) top += roof;
+
+  return { top: Math.max(top, bottom + 0.5), bottom };
+}
+
+/** geometry de Overpass ([{lat,lon}]) -> anillo en coordenadas de mundo. */
+function ringFromGeometry(geometry) {
+  const ring = geometry.map(p => World.toWorld(p.lon, p.lat));
+  // quitar el nodo de cierre duplicado (Shape lo cierra solo)
+  if (ring.length > 1) {
+    const a = ring[0], b = ring[ring.length - 1];
+    if (Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.z - b.z) < 1e-6) ring.pop();
+  }
+  return ring;
+}
+
+/** geometry de Overpass -> polilinea abierta en coordenadas de mundo. */
+function lineFromGeometry(geometry) {
+  return geometry.map(p => World.toWorld(p.lon, p.lat));
+}
+
+const signedArea = ring => {
+  let s = 0;
+  for (let i = 0, n = ring.length; i < n; i++) {
+    const a = ring[i], b = ring[(i + 1) % n];
+    s += a.x * b.z - b.x * a.z;
+  }
+  return s / 2;
+};
+
+const STITCH = { open: 0 };   // anillos descartados por no cerrar
+
+/** Une los tramos (ways) de un multipoligono en anillos cerrados. */
+function stitchRings(segments) {
+  const rings = [], pending = segments.map(s => s.slice());
+  const eq = (a, b) => Math.abs(a.x - b.x) < 0.05 && Math.abs(a.z - b.z) < 0.05;
+  while (pending.length) {
+    let cur = pending.shift();
+    let grew = true;
+    while (grew && !eq(cur[0], cur[cur.length - 1])) {
+      grew = false;
+      for (let i = 0; i < pending.length; i++) {
+        const seg = pending[i], end = cur[cur.length - 1];
+        if (eq(end, seg[0]))                    { cur = cur.concat(seg.slice(1)); }
+        else if (eq(end, seg[seg.length - 1]))  { cur = cur.concat(seg.slice(0, -1).reverse()); }
+        else continue;
+        pending.splice(i, 1); grew = true; break;
+      }
+    }
+    if (cur.length < 4) { STITCH.open++; continue; }
+    if (eq(cur[0], cur[cur.length - 1])) { cur.pop(); rings.push(cur); continue; }
+    // Cadena que no cierra: casi siempre falta un miembro que cae fuera del
+    // bbox descargado. Se cierra sola solo si el hueco es chico frente al
+    // perimetro; si no, se descarta -- mejor nada que un poligono inventado.
+    let per = 0;
+    for (let i = 1; i < cur.length; i++)
+      per += Math.hypot(cur[i].x - cur[i - 1].x, cur[i].z - cur[i - 1].z);
+    const gap = Math.hypot(cur[0].x - cur[cur.length - 1].x,
+                           cur[0].z - cur[cur.length - 1].z);
+    if (per > 0 && gap < per * 0.25) rings.push(cur); else STITCH.open++;
+  }
+  return rings;
+}
+
+/** THREE.Shape a partir de un anillo exterior + huecos, en el plano XY del shape.
+ *  Convencion: shape.x = mundo.x, shape.y = -mundo.z  (ver rotateX mas abajo). */
+function shapeFromRings(outer, holes = []) {
+  const mk = (ring, ccw) => {
+    const r = signedArea(ring) > 0 === ccw ? ring : ring.slice().reverse();
+    const pts = r.map(p => new THREE.Vector2(p.x, -p.z));
+    return pts;
+  };
+  const shape = new THREE.Shape(mk(outer, true));
+  for (const h of holes) {
+    if (h.length < 3) continue;
+    shape.holes.push(new THREE.Path(mk(h, false)));
+  }
+  return shape;
+}
+
+/* ------------------- 8. EXTRUSION Y APOYO SOBRE EL TERRENO ---------------- */
+
+const MAT = {
+  base:   new THREE.MeshStandardMaterial({ color: 0xc08457, roughness: 0.78, metalness: 0.02 }),
+  mid:    new THREE.MeshStandardMaterial({ color: 0xd9a878, roughness: 0.72, metalness: 0.02 }),
+  tower:  new THREE.MeshStandardMaterial({ color: 0xefe9df, roughness: 0.6,  metalness: 0.03 }),
+  plain:  new THREE.MeshStandardMaterial({ color: 0xaeb4bc, roughness: 0.88, metalness: 0.0 }),
+  steps:  new THREE.MeshStandardMaterial({ color: 0x3d7fd6, roughness: 0.62, metalness: 0.05 })
+};
+
+/* Materiales derivados de building:colour, cacheados por color. Muchos
+   building:part de la zona traen el color real relevado en campo: por ejemplo
+   la relacion 5295126 ("Columnas de la Galeria de Honor") declara #E6E4D8. */
+const COLOR_CACHE = new Map();
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** Elige el material: color real de OSM si lo hay, si no por rol y altura. */
+function materialFor(kind, topH, tags = {}) {
+  const raw = tags['building:colour'] ?? tags['building:color'];
+  if (raw && HEX.test(raw.trim())) {
+    const key = raw.trim().toLowerCase();
+    if (!COLOR_CACHE.has(key))
+      COLOR_CACHE.set(key, new THREE.MeshStandardMaterial({
+        color: new THREE.Color(key), roughness: 0.78, metalness: 0.02
+      }));
+    return COLOR_CACHE.get(key);
+  }
+  if (kind !== 'part') return MAT.plain;
+  if (topH > 40) return MAT.tower;      // torre / remate
+  if (topH > 18) return MAT.mid;        // cuerpo escalonado
+  return MAT.base;                      // basamento
+}
+
+/** Cota minima y maxima del terreno bajo un anillo (evita flotar/enterrar). */
+function groundRange(ring) {
+  let lo = Infinity, hi = -Infinity;
+  for (const p of ring) {
+    const h = groundAt(p.x, p.z);
+    if (h < lo) lo = h;
+    if (h > hi) hi = h;
+  }
+  // centroide como muestra adicional (poligonos grandes y poco densos)
+  let cx = 0, cz = 0;
+  for (const p of ring) { cx += p.x; cz += p.z; }
+  const hc = groundAt(cx / ring.length, cz / ring.length);
+  return { lo: Math.min(lo, hc), hi: Math.max(hi, hc) };
+}
+
+/**
+ * Construye un bloque extruido apoyado en el terreno.
+ *  - la base arranca en la cota MINIMA del terreno bajo la huella
+ *  - se prolonga hacia abajo la diferencia con la cota MAXIMA, de modo que el
+ *    bloque quede enterrado en la pendiente y nunca aparezca flotando.
+ */
+function extrudeFootprint(outer, holes, tags, kind) {
+  if (outer.length < 3) return null;
+  const { top, bottom } = heightOf(tags);
+  const g = groundRange(outer);
+  const bury = (g.hi - g.lo) + 0.6;              // hundido bajo la cota minima
+  const depth = (top - bottom) + bury;
+
+  const geo = new THREE.ExtrudeGeometry(shapeFromRings(outer, holes), {
+    depth, bevelEnabled: false, curveSegments: 2, steps: 1
+  });
+  // ExtrudeGeometry extruye en +Z: al rotar -90 en X, (x,y,z) -> (x, z, -y).
+  // Asi el espesor pasa a +Y y shape.y vuelve a ser -mundo.z.
+  geo.rotateX(-Math.PI / 2);
+
+  const mesh = new THREE.Mesh(geo, materialFor(kind, top, tags));
+  mesh.position.y = g.lo + bottom - bury;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = {
+    baseY: mesh.position.y, baseGround: g.lo,
+    kind, top, bottom, name: tags.name || tags['building:part'] || tags.building || kind
+  };
+  return mesh;
+}
+
+/* ------------- 9bis. CAPAS DE SUPERFICIE: parques, agua, calles ----------- */
+/**
+ * Todo esto ya viene en OSM; no hay que modelarlo a mano. Se dibuja como
+ * geometria DRAPEADA: el poligono se tesela hasta que ningun lado supere unos
+ * metros y despues cada vertice se lleva a la cota del terreno mas un
+ * desfasaje chico, distinto por capa, para que se apilen sin pelearse por el
+ * z-buffer.
+ */
+/**
+ * maxEdge / densify: lado maximo de los triangulos del solado. Importa mas de
+ * lo que parece. Un triangulo apoya solo en sus vertices; en el medio la cuerda
+ * se aparta de la superficie real, y si ese apartamiento supera el desfasaje
+ * del solado, el terreno asoma por encima y el mapa se ve roto.
+ *
+ * Medido sobre el campo de terrazas: con lado 12 m el error llega a 0,92 m al
+ * 30 % de terrazas, contra los 0,18 m que levanta la calzada. Con lado 3 m baja
+ * a 0,155 m. Sin terrazas el error era 0,003 m, por eso antes no se notaba.
+ *
+ * terraceLift: el error crece con la deformacion, asi que el solado se levanta
+ * en proporcion a las terrazas. En 0 no suma nada.
+ */
+const smoothstep01 = t => {
+  const u = t < 0 ? 0 : t > 1 ? 1 : t;
+  return u * u * (3 - 2 * u);
+};
+
+let roadCut = 0.1;   // recorte permitido bajo el terreno, ver buildSurfaces()
+const SURF = {
+  maxEdge: 3, densify: 3, terraceLift: 0.50,
+  // Rasante de las calzadas. Una calle no es una tela drapeada: se construye.
+  // roadSmooth = largo de la media movil sobre el perfil longitudinal (m).
+  // roadCut    = cuanto se permite cortar por debajo del terreno para
+  //              rebajar un lomo, en vez de treparlo.
+  roadSmooth: 24, roadCutFrac: 0.6,
+  // gradeHold: franja a plena intensidad MAS ALLA del borde de la calzada. La
+  //   malla tiene un vertice cada 2,5 m: si el nivelado pleno termina justo en
+  //   el borde, el vertice de afuera queda a medio nivelar y al interpolar la
+  //   calzada vuelve a flotar.
+  // gradePasses: se nivela, se recalculan las rasantes sobre el terreno ya
+  //   nivelado y se vuelve a nivelar. En los cruces, dos calles con rasantes
+  //   distintas promedian; la segunda pasada las concilia.
+  gradeFeather: 3.0, gradeHold: 3.0, gradePasses: 3
+};
+let surfLift = 0;   // se recalcula en cada buildSurfaces()
+
+/** Clasifica un poligono. Devuelve null si el visor no lo sabe dibujar. */
+function classifyArea(t) {
+  if (t.building || t['building:part']) return null;        // ya son volumenes
+  if (t.natural === 'water' || t.waterway === 'riverbank' || t.landuse === 'reservoir')
+    return { id: 'agua',      color: 0x2e6d97, off: 0.05, rough: 0.2, metal: 0.15 };
+  if (t.natural === 'wood' || t.landuse === 'forest')
+    return { id: 'arboleda',  color: 0x3f6b36, off: 0.18 };
+  if (t.leisure === 'park' || t.leisure === 'garden' || t.landuse === 'grass' ||
+      t.landuse === 'recreation_ground' || t.leisure === 'pitch')
+    return { id: 'verde',     color: 0x62914a, off: 0.12 };
+  if (t.leisure === 'sports_centre' || t.leisure === 'swimming_pool' || t.leisure === 'playground')
+    return { id: 'deportivo', color: 0x6f8f6a, off: 0.14 };
+  if (t.amenity === 'parking')
+    return { id: 'playa',     color: 0x7b7a75, off: 0.10 };
+  if (t.man_made === 'pier')
+    return { id: 'muelle',    color: 0x9c8461, off: 0.36 };
+  if (t.highway === 'pedestrian' || t['area:highway'] || t.place === 'square')
+    return { id: 'peatonal',  color: 0xc4bcae, off: 0.15 };
+  if (t.amenity === 'school' || t.amenity === 'hospital' ||
+      ['military', 'brownfield', 'construction', 'industrial', 'religious'].includes(t.landuse))
+    return { id: 'predio',    color: 0x8d8b85, off: 0.06 };
+  // landuse=residential / commercial / retail son zonificacion administrativa,
+  // no superficie: no se dibujan.
+  return null;
+}
+
+/**
+ * Clasifica una linea de la red de circulacion.
+ *
+ * Cada via se dibuja DOS veces, como en los renders de f4map / cartografia
+ * clasica: primero un "casing" (borde) mas ancho y oscuro, apenas mas abajo, y
+ * encima el relleno. La franja oscura que asoma a los costados es lo que le da
+ * el borde nitido y separa visualmente calzada de vereda.
+ */
+function classifyLine(t) {
+  if (!t.highway) return null;
+  const tagged = parseLength(t.width);
+  const R = (id, width, color, off, casing, grow) => ({
+    id, color, off,
+    width: Number.isFinite(tagged) && tagged > 0 ? clamp(tagged, 1, 40) : width,
+    casing: { color: casing, grow }
+  });
+  switch (t.highway) {
+    case 'motorway': case 'trunk': case 'primary': return R('calzada',  12, 0xc6bfb0, 0.18, 0x6f6a60, 1.6);
+    case 'secondary':                              return R('calzada',  10, 0xbdb5a6, 0.18, 0x6f6a60, 1.4);
+    case 'tertiary':                               return R('calzada',   8, 0xbdb5a6, 0.18, 0x6f6a60, 1.2);
+    case 'residential': case 'living_street':      return R('calzada',   7, 0xb4ada0, 0.18, 0x767065, 1.1);
+    case 'service':                                return R('calzada',   4, 0xada699, 0.18, 0x7b7569, 0.8);
+    case 'pedestrian':                             return R('peaton_l',  6, 0xc4bcae, 0.21, 0x8a8375, 0.8);
+    case 'cycleway':                               return R('bici',      2, 0x9a7f6a, 0.23, 0x6a5445, 0.5);
+    // Las escaleras no se modelan en 3D: se dibujan como una senda mas, con
+    // marcas transversales muy leves que insinuan los escalones. La cantidad
+    // sale de step_count cuando OSM lo trae; si no, de una huella tipica.
+    case 'steps': {
+      const st = R('escalera', 1.8, 0xc2a98a, 0.28, 0x7d6b52, 0.5);
+      const sc = parseInt(t['step_count'], 10);
+      st.nosing = {
+        count: Number.isFinite(sc) && sc > 1 ? sc : 0,
+        // incline dice hacia donde sube RESPECTO DEL ORDEN DE NODOS del way
+        down: t['incline'] === 'down'
+      };
+      return st;
+    }
+    case 'footway': case 'path': case 'corridor':
+      // la vereda va por encima de la calzada, como en la realidad
+      return t.footway === 'crossing' ? R('senda',  2.6, 0xe2dccd, 0.22, 0x9a9384, 0.5)
+                                      : R('vereda', 2.0, 0xd6cfc0, 0.26, 0x948d7e, 0.55);
+  }
+  return null;
+}
+
+const tess = new TessellateModifier(SURF.maxEdge, 10);
+
+/** Poligono drapeado sobre el terreno, teselado para seguir el relieve. */
+function drapedArea(outer, holes, off) {
+  if (outer.length < 3) return null;
+  let geo;
+  try {
+    geo = new THREE.ShapeGeometry(shapeFromRings(outer, holes)).toNonIndexed();
+  } catch { return null; }
+  if (!geo.attributes.position.count) { geo.dispose(); return null; }
+  geo = tess.modify(geo);
+  geo.rotateX(-Math.PI / 2);                 // shape.y -> -mundo.z, plano en XZ
+  // ShapeGeometry trae uv y las cintas no: si se mezclan en una misma capa,
+  // mergeGeometries falla y la capa entera desaparece sin avisar.
+  geo.deleteAttribute('uv');
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++)
+    pos.setY(i, pavementY(pos.getX(i), pos.getZ(i)) + off + surfLift);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Cinta de ancho constante a lo largo de una polilinea, drapeada. */
+/**
+ * Rasante de una via: densifica la traza, calcula la cota de cada seccion y la
+ * suaviza. Lo usan la cinta y su talud, para que coincidan exactamente.
+ */
+function roadProfile(pts, width) {
+  const dense = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = dense[dense.length - 1], b = pts[i];
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    const k = Math.max(1, Math.ceil(d / SURF.densify));
+    for (let j = 1; j <= k; j++)
+      dense.push({ x: a.x + (b.x - a.x) * j / k, z: a.z + (b.z - a.z) * j / k });
+  }
+  if (dense.length < 2) return null;
+
+  const hw = width / 2, n = dense.length;
+  const dirX = new Float32Array(n), dirZ = new Float32Array(n);
+  const crudo = new Float32Array(n);
+
+  // --- 1. perfil crudo: cota del EJE ---------------------------------------
+  // Solo el eje, no el maximo de la seccion. El maximo servia cuando la calle
+  // se apoyaba sobre el terreno tal cual: evitaba enterrar el lado alto. Ahora
+  // el terreno se nivela a esta misma rasante, asi que tomar el maximo solo
+  // inflaba la cota -- las muestras de los bordes caen en la franja de
+  // transicion, que queda a medio nivelar, y la calle volvia a flotar.
+  for (let i = 0; i < n; i++) {
+    const a = dense[Math.max(0, i - 1)], b = dense[Math.min(n - 1, i + 1)];
+    let dx = b.x - a.x, dz = b.z - a.z;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    dirX[i] = dx; dirZ[i] = dz;
+    crudo[i] = pavementY(dense[i].x, dense[i].z);
+  }
+
+  // --- 2. rasante: media movil sobre el perfil ------------------------------
+  // Una calle tiene pendiente pareja; no copia cada bache del terreno. El
+  // recorte limita cuanto puede hundirse respecto del terreno real.
+  const win = Math.max(1, Math.round(SURF.roadSmooth / SURF.densify));
+  const perfil = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0, c = 0;
+    for (let k = -win; k <= win; k++) {
+      const j = i + k;
+      if (j < 0 || j >= n) continue;
+      sum += crudo[j]; c++;
+    }
+    perfil[i] = Math.max(sum / c, crudo[i] - roadCut);
+  }
+
+  return { dense, dirX, dirZ, perfil, n, hw };
+}
+
+/** Cinta de calzada: seccion transversal horizontal, rasante suavizada. */
+function ribbonArea(pts, width, off) {
+  const pr = roadProfile(pts, width);
+  if (!pr) return null;
+  const { dense, dirX, dirZ, perfil, n, hw } = pr;
+
+  // Cada seccion se emite con la MISMA cota a ambos lados: es lo que endereza
+  // la calle, en vez de alabearse siguiendo el terreno de cada borde.
+  const L = [], R = [];
+  for (let i = 0; i < n; i++) {
+    const q = dense[i], dx = dirX[i], dz = dirZ[i];
+    // Sin surfLift: el terreno ya fue nivelado a esta misma rasante, asi que
+    // la calzada se apoya directamente. El desfasaje extra solo lo necesitan
+    // las areas, que siguen el relieve sin nivelar.
+    const y = perfil[i] + off;
+    L.push(q.x - dz * hw, y, q.z + dx * hw);
+    R.push(q.x + dz * hw, y, q.z - dx * hw);
+  }
+
+  const v = [];
+  for (let i = 0; i < dense.length - 1; i++) {
+    const a = i * 3, b = (i + 1) * 3;
+    v.push(L[a], L[a+1], L[a+2], R[b], R[b+1], R[b+2], R[a], R[a+1], R[a+2]);
+    v.push(L[a], L[a+1], L[a+2], L[b], L[b+1], L[b+2], R[b], R[b+1], R[b+2]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  const nrm = new Float32Array(v.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;   // drapeado: normal hacia arriba
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  return geo;
+}
+
+/**
+ * Marcas transversales sobre una senda de escalera: una banda fina por escalon,
+ * perpendicular al avance, drapeada sobre el terreno como el resto del solado.
+ *
+ * Es puramente decorativa. No modifica el heightmap ni necesita anclaje: se
+ * apoya en terrainSurfaceY() igual que la vereda que tiene debajo.
+ *
+ * @param count  escalones declarados por OSM; 0 = estimar por huella tipica
+ */
+function nosingArea(pts, width, off, count, depth = 0.14) {
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++)
+    acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+  const total = acc[acc.length - 1];
+  if (total <= 0) return null;
+
+  // Huella acotada: por debajo de ~0,35 m las marcas se empastan en una mancha
+  // y por encima de ~2,5 m dejan de leerse como escalones.
+  const spacing = clamp(count > 1 ? total / count : 0.45, 0.35, 2.5);
+  const n = Math.floor(total / spacing);
+  if (n < 1) return null;
+
+  const hw = width / 2, hd = depth / 2, v = [];
+  for (let k = 1; k <= n; k++) {
+    const sk = k * spacing;
+    let i = 1;
+    while (i < acc.length - 1 && acc[i] < sk) i++;
+    const A = pts[i - 1], B = pts[i];
+    const seg = Math.max(1e-6, acc[i] - acc[i - 1]);
+    const t = clamp((sk - acc[i - 1]) / seg, 0, 1);
+    const dx = (B.x - A.x) / seg, dz = (B.z - A.z) / seg;
+    const cx = A.x + (B.x - A.x) * t, cz = A.z + (B.z - A.z) * t;
+
+    // Cota unica tomada en el eje: la marca queda horizontal, como el peldanio
+    // que representa, en vez de alabearse con el terreno de cada esquina.
+    const y = pavementY(cx, cz) + off;
+    const P = (lado, lon) => [
+      cx + lado * (-dz) * hw + lon * dx * hd, y,
+      cz + lado * ( dx) * hw + lon * dz * hd
+    ];
+    const La = P(1, -1), Lb = P(1, 1), Ra = P(-1, -1), Rb = P(-1, 1);
+    // mismo bobinado que ribbonArea, verificado con normal hacia +Y
+    v.push(...La, ...Rb, ...Ra);
+    v.push(...La, ...Lb, ...Rb);
+  }
+  if (!v.length) return null;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  const nrm = new Float32Array(v.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  return geo;
+}
+
+/**
+ * Talud de una calzada: los dos faldones verticales que bajan del borde de la
+ * cinta hasta el terreno.
+ *
+ * Hacen falta porque la rasante esta suavizada y toma la cota alta de cada
+ * seccion: sobre terreno escalonado la calle queda por encima del suelo de un
+ * lado. Sin el faldon se ve una losa flotando; con el, se lee como terraplen.
+ */
+function ribbonSkirt(pts, width, off) {
+  const pr = roadProfile(pts, width);
+  if (!pr) return null;
+  const { dense, dirX, dirZ, perfil, n, hw } = pr;
+
+  const v = [];
+  const borde = (i, lado) => {
+    const q = dense[i], dx = dirX[i], dz = dirZ[i];
+    const x = q.x + lado * (-dz) * hw, z = q.z + lado * dx * hw;
+    const top = perfil[i] + off;
+    // el pie se hunde un poco para que no quede una linea de luz contra el suelo
+    return { x, z, top, bot: Math.min(pavementY(x, z), top) - 0.25 };
+  };
+
+  for (let lado = -1; lado <= 1; lado += 2) {
+    for (let i = 0; i < n - 1; i++) {
+      const A = borde(i, lado), B = borde(i + 1, lado);
+      // El bobinado se invierte segun el lado para que ambos faldones miren
+      // hacia afuera. Verificado con normal geometrica sobre una calle recta:
+      // con el orden opuesto los dos quedaban mirando hacia adentro y el
+      // culling de caras traseras los hacia invisibles justo desde donde se
+      // los ve.
+      if (lado > 0) {
+        v.push(A.x, A.top, A.z, B.x, B.bot, B.z, B.x, B.top, B.z);
+        v.push(A.x, A.top, A.z, A.x, A.bot, A.z, B.x, B.bot, B.z);
+      } else {
+        v.push(A.x, A.top, A.z, B.x, B.top, B.z, B.x, B.bot, B.z);
+        v.push(A.x, A.top, A.z, B.x, B.bot, B.z, A.x, A.bot, A.z);
+      }
+    }
+  }
+  if (!v.length) return null;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  geo.computeVertexNormals();          // son caras verticales: normal real
+  return geo;
+}
+
+/**
+ * Nivela el terreno bajo la red de circulacion.
+ *
+ * Hasta aca la calzada se dibujaba con seccion horizontal y rasante suavizada,
+ * pero el terreno seguia su propio relieve: la calle terminaba flotando hasta
+ * 1,2 m sobre el suelo y habia que taparlo con faldones. Lo correcto es al
+ * reves -- una calle se construye nivelando el terreno, no apoyandola encima.
+ *
+ * Se rasteriza el perfil de cada via en un buffer del tamano de la malla,
+ * acumulando cota y peso, y despues se mezcla con el terreno. Rasterizar es
+ * mucho mas barato que buscar, para cada uno de los 263k vertices, cual de las
+ * 223 vias tiene cerca.
+ */
+function gradeRoads(lineJobs) {
+  if (!TG.ready || !terrainMesh || !lineJobs.length) return { touched: 0, max: 0, total: 1 };
+  let res = { touched: 0, max: 0, total: 1 };
+  for (let pasada = 0; pasada < SURF.gradePasses; pasada++) res = gradeRoadsOnce(lineJobs);
+  return res;
+}
+
+function gradeRoadsOnce(lineJobs) {
+  const W = TG.nx + 1, H = TG.nz + 1;
+  const acum = new Float32Array(W * H), peso = new Float32Array(W * H);
+  const feather = SURF.gradeFeather;
+
+  for (const l of lineJobs) {
+    if (l.pts.length < 2) continue;
+    const pr = roadProfile(l.pts, l.ls.width);
+    if (!pr) continue;
+    const { dense, perfil, n, hw } = pr;
+    const radio = hw + SURF.gradeHold + feather;
+
+    for (let i = 0; i < n; i++) {
+      const q = dense[i], y = perfil[i];
+      const i0 = Math.max(0, Math.floor((q.x - radio - TG.x0) / TG.dx));
+      const i1 = Math.min(TG.nx, Math.ceil((q.x + radio - TG.x0) / TG.dx));
+      const j0 = Math.max(0, Math.floor((q.z - radio - TG.z0) / TG.dz));
+      const j1 = Math.min(TG.nz, Math.ceil((q.z + radio - TG.z0) / TG.dz));
+      for (let j = j0; j <= j1; j++) for (let i2 = i0; i2 <= i1; i2++) {
+        const x = TG.x0 + i2 * TG.dx, z = TG.z0 + j * TG.dz;
+        const d = Math.hypot(x - q.x, z - q.z);
+        if (d > radio) continue;
+        const w = 1 - smoothstep01((d - hw - SURF.gradeHold) / feather);
+        if (w <= 0) continue;
+        const k = j * W + i2;
+        acum[k] += y * w; peso[k] += w;
+      }
+    }
+  }
+
+  const pos = terrainMesh.geometry.attributes.position;
+  let touched = 0, max = 0;
+  for (let k = 0; k < peso.length; k++) {
+    if (peso[k] <= 1e-6) continue;
+    const objetivo = acum[k] / peso[k];
+    const w = Math.min(1, peso[k]);           // el peso tambien atenua el borde
+    const y = terrainBaseY[k] + (objetivo - terrainBaseY[k]) * w;
+    const d = Math.abs(y - terrainBaseY[k]);
+    if (d > max) max = d;
+    terrainBaseY[k] = y; pos.setY(k, y);
+    touched++;
+  }
+  pos.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+  return { touched, max, total: peso.length };
+}
+
+/** Acumula geometrias por capa y al final funde una unica malla por capa. */
+class SurfaceBuilder {
+  constructor() { this.bins = new Map(); this.count = 0; this.report = []; this.failed = []; }
+  add(style, geo) {
+    if (!geo) return;
+    if (!this.bins.has(style.id)) this.bins.set(style.id, { style, geos: [] });
+    this.bins.get(style.id).geos.push(geo);
+    this.count++;
+  }
+  build(group) {
+    for (const { style, geos } of this.bins.values()) {
+      const merged = mergeGeometries(geos, false);
+      if (!merged) { this.failed.push(style.id + ' (' + geos.length + ')'); continue; }
+      geos.forEach(g => g.dispose());
+      const mesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({
+        color: style.color,
+        roughness: style.rough ?? 0.95,
+        metalness: style.metal ?? 0,
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+      }));
+      mesh.receiveShadow = true;
+      mesh.userData = { baseY: 0, baseGround: dem.min, kind: 'surface', layer: style.id };
+      group.add(mesh);
+      if (!style.quiet) this.report.push([style.id, geos.length]);
+    }
+    if (this.failed.length) console.warn('capas que no pudieron fundirse:', this.failed);
+    console.info('capas dibujadas:',
+      [...this.bins.values()].map(b => b.style.id + '=' + b.geos.length).join(' '));
+    return this.bins.size;
+  }
+}
+
+/* ----------------------- 10. PROCESADO DE LA RESPUESTA OSM ---------------- */
+
+/** Punto dentro de anillo (ray casting) en el plano XZ. */
+function pointInRing(px, pz, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a.z > pz) !== (b.z > pz) &&
+        px < (b.x - a.x) * (pz - a.z) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+}
+const centroid = ring => {
+  let x = 0, z = 0;
+  for (const p of ring) { x += p.x; z += p.z; }
+  return { x: x / ring.length, z: z / ring.length };
+};
+
+function processOSM(elements) {
+  const stats = { bld: 0, part: 0, surf: 0, layers: 0, jobs: null,
+                  footprints: [], stepLines: [] };
+  const footprints = [];   // { outer, holes, tags, kind }
+  const areaJobs = [], lineJobs = [];
+
+  for (const el of elements) {
+    const tags = el.tags || {};
+
+    if (el.type === 'way' && el.geometry) {
+      const g0 = el.geometry[0], gN = el.geometry[el.geometry.length - 1];
+      const closed = el.geometry.length > 3 &&
+                     Math.abs(g0.lat - gN.lat) < 1e-9 && Math.abs(g0.lon - gN.lon) < 1e-9;
+
+      if (closed) {
+        const outer = ringFromGeometry(el.geometry);
+        if (outer.length >= 3) {
+          if (tags['building:part']) { footprints.push({ outer, holes: [], tags, kind: 'part' }); continue; }
+          if (tags.building)         { footprints.push({ outer, holes: [], tags, kind: 'building' }); continue; }
+          const st = classifyArea(tags);
+          if (st) { areaJobs.push({ outer, holes: [], st }); continue; }
+        }
+      }
+      // no es poligono dibujable: puede ser una linea de circulacion
+      const ls = classifyLine(tags);
+      if (ls) lineJobs.push({ pts: lineFromGeometry(el.geometry), ls });
+
+    } else if (el.type === 'relation' && el.members) {
+      const outers = [], inners = [];
+      for (const m of el.members) {
+        if (m.type !== 'way' || !m.geometry) continue;
+        const ring = m.geometry.map(p => World.toWorld(p.lon, p.lat));
+        (m.role === 'inner' ? inners : outers).push(ring);
+      }
+      const kind = tags['building:part'] ? 'part' : (tags.building ? 'building' : null);
+      const rings = stitchRings(outers), holes = stitchRings(inners);
+      if (kind) {
+        for (const outer of rings) footprints.push({ outer, holes, tags, kind });
+      } else {
+        const st = classifyArea(tags);
+        if (st) for (const outer of rings) areaJobs.push({ outer, holes, st });
+      }
+    }
+  }
+
+  // Especificacion "Simple 3D Buildings": si un edificio tiene building:part
+  // dentro, su contorno NO se dibuja (lo sustituyen las partes).
+  const parts = footprints.filter(f => f.kind === 'part');
+  const visible = footprints.filter(f => {
+    if (f.kind === 'part') return true;
+    return !parts.some(p => {
+      const c = centroid(p.outer);
+      return pointInRing(c.x, c.z, f.outer);
+    });
+  });
+
+  for (const f of visible) {
+    const mesh = extrudeFootprint(f.outer, f.holes, f.tags, f.kind);
+    if (!mesh) continue;
+    gBuild.add(mesh);
+    if (f.kind === 'part') stats.part++; else stats.bld++;
+  }
+
+  stats.jobs = { areaJobs, lineJobs };
+  stats.footprints = visible.filter(f => f.kind === 'building' || f.kind === 'part');
+  stats.stepLines  = lineJobs.filter(l => l.ls.nosing);
+  return stats;
+}
+
+/** Construye todas las capas de superficie acumuladas. */
+function buildSurfaces(jobs) {
+  if (!jobs) return { count: 0, layers: 0 };
+  surfLift = SURF.terraceLift * CFG.terrace.fraction;
+  // Cuanto puede hundirse la rasante bajo el terreno sin que asome: una
+  // fraccion del margen que da el desfasaje mas fino (la calzada, 0,18 m).
+  roadCut = SURF.roadCutFrac * (0.18 + surfLift);
+  const sb = new SurfaceBuilder();
+  for (const a of jobs.areaJobs) sb.add(a.st, drapedArea(a.outer, a.holes, a.st.off));
+
+  // Casing primero (mas ancho, mas oscuro, 3 cm mas abajo) y relleno despues.
+  // Ambos se drapean sobre la misma superficie, asi que su separacion es
+  // exactamente 3 cm en todo el recorrido: no hay z-fighting entre ellos.
+  for (const l of jobs.lineJobs) {
+    if (l.pts.length < 2) continue;
+    const c = l.ls.casing;
+    if (c) sb.add({ id: l.ls.id + '·borde', color: c.color, off: l.ls.off - 0.03, quiet: true },
+                  ribbonArea(l.pts, l.ls.width + c.grow, l.ls.off - 0.03));
+  }
+  // Taludes antes que las cintas: quedan por debajo y no compiten en el borde.
+  for (const l of jobs.lineJobs) {
+    if (l.pts.length < 2) continue;
+    sb.add({ id: 'talud', color: 0x6d6456, off: 0, quiet: true, rough: 1 },
+           ribbonSkirt(l.pts, l.ls.width, l.ls.off));
+  }
+  for (const l of jobs.lineJobs)
+    if (l.pts.length > 1) sb.add(l.ls, ribbonArea(l.pts, l.ls.width, l.ls.off));
+
+  // Narices de escalon, ultima capa: 2,5 cm sobre la senda, apenas mas oscuras.
+  // Misma separacion que usa el casing, que ya probo no dar z-fighting.
+  for (const l of jobs.lineJobs) {
+    if (!l.ls.nosing || l.pts.length < 2) continue;
+    sb.add({ id: 'escalón', color: 0x9b8a72, off: l.ls.off + 0.025 },
+           nosingArea(l.pts, l.ls.width * 0.9, l.ls.off + 0.025, l.ls.nosing.count));
+  }
+  const layers = sb.build(gSurf);
+  return { count: sb.count, layers, report: sb.report, failed: sb.failed };
+}
+
+/* --------------- 10bis. SEDIMENTO Y MALEZA (post-apocaliptico) ------------ */
+/**
+ * Campo de obstaculos: rasteriza las huellas de edificio en una grilla gruesa
+ * y la difumina. El resultado, entre 0 y 1, dice cuanta construccion hay cerca
+ * de cada punto -- y contra los muros es donde mas se acumula el sedimento.
+ *
+ * Rasterizar y difuminar es mucho mas barato que medir la distancia a 1005
+ * poligonos por cada uno de los 263k vertices del terreno.
+ */
+const RUB = { grid: null, steps: null, n: 192, x0: 0, z0: 0, dx: 1, dz: 1 };
+
+function buildObstacleField(footprints) {
+  if (!TG.ready) return;
+  const n = RUB.n, g = new Float32Array(n * n);
+  RUB.x0 = TG.x0; RUB.z0 = TG.z0;
+  RUB.dx = (TG.nx * TG.dx) / (n - 1);
+  RUB.dz = (TG.nz * TG.dz) / (n - 1);
+
+  for (const f of footprints) {
+    let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+    for (const q of f.outer) {
+      mnx = Math.min(mnx, q.x); mxx = Math.max(mxx, q.x);
+      mnz = Math.min(mnz, q.z); mxz = Math.max(mxz, q.z);
+    }
+    const i0 = Math.max(0, Math.floor((mnx - RUB.x0) / RUB.dx));
+    const i1 = Math.min(n - 1, Math.ceil((mxx - RUB.x0) / RUB.dx));
+    const j0 = Math.max(0, Math.floor((mnz - RUB.z0) / RUB.dz));
+    const j1 = Math.min(n - 1, Math.ceil((mxz - RUB.z0) / RUB.dz));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const x = RUB.x0 + i * RUB.dx, z = RUB.z0 + j * RUB.dz;
+      if (pointInRing(x, z, f.outer)) g[j * n + i] = 1;
+    }
+  }
+  TerrariumSampler.blur(g, n, n, 2, 2);   // el talud se derrama hacia afuera
+  RUB.grid = g;
+}
+
+/**
+ * Campo de escaleras: misma tecnica que el de obstaculos, pero rasterizando las
+ * TRAZAS. Con celdas de ~6,7 m la banda sale mas ancha que la escalera, que es
+ * justo lo que se busca: el monton se derrama alrededor y no deja un canto
+ * recto delatando donde estaba.
+ */
+function buildStepsField(lines) {
+  if (!TG.ready) return;
+  const n = RUB.n, g = new Float32Array(n * n);
+  for (const l of lines) {
+    const pts = l.pts;
+    for (let k = 1; k < pts.length; k++) {
+      const A = pts[k - 1], B = pts[k];
+      const len = Math.hypot(B.x - A.x, B.z - A.z);
+      const pasos = Math.max(1, Math.ceil(len / (RUB.dx * 0.5)));
+      for (let m = 0; m <= pasos; m++) {
+        const t = m / pasos;
+        const x = A.x + (B.x - A.x) * t, z = A.z + (B.z - A.z) * t;
+        const i = clamp(Math.round((x - RUB.x0) / RUB.dx), 0, n - 1);
+        const j = clamp(Math.round((z - RUB.z0) / RUB.dz), 0, n - 1);
+        g[j * n + i] = 1;
+      }
+    }
+  }
+  TerrariumSampler.blur(g, n, n, 1, 2);
+  // el blur reparte el valor: se renormaliza para que el eje vuelva a valer ~1
+  let mx = 0;
+  for (const v of g) if (v > mx) mx = v;
+  if (mx > 0) for (let i = 0; i < g.length; i++) g[i] = Math.min(1, g[i] / mx);
+  RUB.steps = g;
+}
+
+const stepsAt = (x, z) => {
+  if (!RUB.steps) return 0;
+  const n = RUB.n;
+  const i = clamp(Math.round((x - RUB.x0) / RUB.dx), 0, n - 1);
+  const j = clamp(Math.round((z - RUB.z0) / RUB.dz), 0, n - 1);
+  return RUB.steps[j * n + i];
+};
+
+const obstacleAt = (x, z) => {
+  if (!RUB.grid) return 0;
+  const n = RUB.n;
+  const i = clamp(Math.round((x - RUB.x0) / RUB.dx), 0, n - 1);
+  const j = clamp(Math.round((z - RUB.z0) / RUB.dz), 0, n - 1);
+  return RUB.grid[j * n + i];
+};
+
+/**
+ * Profundidad de sedimento en un punto, en metros.
+ *
+ * Tres factores, todos con sentido fisico:
+ *   - manchones  : fBm, para que haya montones y claros a escala humana
+ *   - pendiente  : en un talud fuerte el material no se queda
+ *   - obstaculos : contra los muros se acumula mas
+ * El corte `bare` deja una fraccion del area por debajo del espesor del solado,
+ * que es lo que hace que algunas calles sigan a la vista.
+ */
+function sedimentAt(x, z, cleanY) {
+  const R = CFG.rubble;
+  if (R.amount <= 0) return 0;
+
+  // pendiente local, medida sobre el terreno limpio
+  const e = 2.0;
+  const gx = (sampleGrid(terrainCleanY, x + e, z) - sampleGrid(terrainCleanY, x - e, z)) / (2 * e);
+  const gz = (sampleGrid(terrainCleanY, x, z + e) - sampleGrid(terrainCleanY, x, z - e)) / (2 * e);
+  const estable = 1 - clamp(Math.hypot(gx, gz) / R.slopeFree, 0, 1);
+
+  // El talud contra los muros se acumula SIEMPRE, tambien en los claros: el
+  // material se amontona contra el obstaculo aunque el resto este barrido.
+  const talus = obstacleAt(x, z) * R.talus * estable;
+
+  // Manto general. El fBm de 4 octavas se agolpa alrededor de 0,5 y casi nunca
+  // pasa de ~0,85; remapear contra ese tope real es lo que hace que el manto
+  // tenga espesor. Antes se dividia por (1 - bare) y ademas se elevaba al
+  // cuadrado, y quedaba en 4 cm: no tapaba nada.
+  let t = (fbm(x / R.patchScale, z / R.patchScale, R.octaves, R.seed) - R.bare)
+        / Math.max(0.05, 0.85 - R.bare);
+  t = clamp(t, 0, 1);
+  const manto = Math.pow(t, 1.3) * R.amount * estable;
+
+  // Monton sobre las escaleras. No pasa por el corte del ruido ni por la
+  // pendiente: si dependiera del manchon, la mitad quedaria a la vista, que es
+  // exactamente lo que se quiere evitar. La variacion deja alguna a medias.
+  const esc = stepsAt(x, z);
+  const entierro = esc > 0
+    ? esc * R.amount * R.stairMul *
+      (1 - R.stairVary + 2 * R.stairVary * fbm(x / 40, z / 40, 2, R.seed + 31))
+    : 0;
+
+  return manto + talus + entierro;
+}
+
+/**
+ * Levanta el terreno con el sedimento y le pinta el color por vertice: tierra
+ * donde la capa es fina, maleza donde es espesa.
+ *
+ * PUNTO DE EXTENSION - PROPS: aca es donde despues irian los objetos sueltos
+ * (matas, escombro, autos abandonados, chatarra), sembrados leyendo
+ * sedimentAt() para colocarlos solo donde la capa es espesa.
+ */
+function applyRubble() {
+  if (!terrainMesh || !terrainCleanY) return { raised: 0, max: 0 };
+  const pos = terrainMesh.geometry.attributes.position;
+  const ox = terrainMesh.position.x, oz = terrainMesh.position.z;
+  const col = new Float32Array(pos.count * 3);
+  const R = CFG.rubble;
+
+  const LIMPIO = [0.56, 0.54, 0.48];   // suelo desnudo
+  const TIERRA = [0.44, 0.37, 0.27];   // sedimento seco
+  const MALEZA = [0.33, 0.44, 0.22];   // vegetacion tomada
+
+  // "Cubierto" tiene que significar que el solado quedo debajo, no que hay
+  // una pizca de sedimento: se mide contra el espesor de la vereda (0,26 m).
+  const ESPESOR = 0.26;
+  let raised = 0, max = 0, escTapada = 0, escTotal = 0;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + ox, z = pos.getZ(i) + oz;
+    const d = sedimentAt(x, z, terrainCleanY[i]);
+    if (d > ESPESOR) raised++;
+    if (d > max) max = d;
+    if (stepsAt(x, z) > 0.5) { escTotal++; if (d > 0.30) escTapada++; }
+    pos.setY(i, terrainCleanY[i] + d);
+
+    // color: limpio -> tierra -> maleza, con su propio manchon para que la
+    // vegetacion no calque exactamente la forma del sedimento
+    const a = clamp(d / Math.max(0.05, R.amount * 0.5), 0, 1);
+    const verde = clamp(a * (0.45 + 0.75 * fbm(x / 17, z / 17, 2, R.seed + 7)), 0, 1);
+    for (let k = 0; k < 3; k++) {
+      const tierra = LIMPIO[k] + (TIERRA[k] - LIMPIO[k]) * a;
+      col[i * 3 + k] = tierra + (MALEZA[k] - tierra) * verde;
+    }
+  }
+  pos.needsUpdate = true;
+  terrainMesh.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  terrainMesh.material.vertexColors = true;
+  terrainMesh.material.color.set(0xffffff);
+  terrainMesh.material.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+
+  // terrainBaseY pasa a ser la superficie visible (con sedimento)
+  for (let i = 0; i < pos.count; i++) terrainBaseY[i] = pos.getY(i);
+  return { raised, max, total: pos.count,
+           escTapada: escTotal ? escTapada / escTotal : 0 };
+}
+
+/* ----------------------- 10bis-b. TERRAZAS DEL TERRENO -------------------- */
+/**
+ * Cada escalera dice "cruzando por aca se sube X metros". Eso no describe un
+ * bulto alrededor de la escalera: describe que TODA la zona de arriba esta mas
+ * alta que TODA la de abajo.
+ *
+ * Se resuelve como reconstruccion de gradiente sobre una grilla: a las aristas
+ * que cruzan el frente de una terraza se les pide una diferencia igual al
+ * salto, a todas las demas se les pide diferencia cero, y se relaja el campo.
+ * El resultado son dos mesetas unidas por una transicion suave, sin que haya
+ * que decidir a mano donde termina cada zona.
+ *
+ * Sumar bultos no sirve: con 36 escaleras se acumularian 36 lomas. La
+ * relajacion, en cambio, concilia todos los saltos en un unico campo coherente.
+ */
+const TER = { field: null, n: 0, x0: 0, z0: 0, dx: 1, dz: 1 };
+
+function buildTerraceField(lines) {
+  const C = CFG.terrace;
+  TER.field = null;
+  if (!TG.ready || C.fraction <= 0 || !lines.length) return { gates: 0, range: 0 };
+
+  const n = C.grid;
+  TER.n = n; TER.x0 = TG.x0; TER.z0 = TG.z0;
+  TER.dx = (TG.nx * TG.dx) / (n - 1);
+  TER.dz = (TG.nz * TG.dz) / (n - 1);
+
+  // Diferencias pedidas a cada arista de la grilla. dH[i,j] es el salto entre
+  // (i,j) y (i+1,j); dV[i,j] entre (i,j) y (i,j+1). Cero salvo en los frentes.
+  const dH = new Float32Array(n * n), dV = new Float32Array(n * n);
+  // Contadores: donde varios frentes se superponen se PROMEDIA, no se suma.
+  // Los tramos paralelos de una misma escalinata describen UN desnivel, no uno
+  // por tramo; sumandolos, los 31 frentes del monumento apilaban 10 m.
+  const cH = new Float32Array(n * n), cV = new Float32Array(n * n);
+  let gates = 0;
+
+  for (const l of lines) {
+    const pts = l.pts, nos = l.ls.nosing;
+    if (!nos || !nos.count) continue;
+    const A = pts[0], B = pts[pts.length - 1];
+    const len = Math.hypot(B.x - A.x, B.z - A.z);
+    if (len < 1) continue;
+
+    // eje de ascenso: por defecto A->B, invertido si incline=down
+    const sg = nos.down ? -1 : 1;
+    const ux = sg * (B.x - A.x) / len, uz = sg * (B.z - A.z) / len;
+    const salto = clamp(nos.count * C.riser * C.fraction, 0, C.maxJump);
+
+    // Frente de terraza: recta por el punto medio, PERPENDICULAR al eje de la
+    // escalera y prolongada `gate` metros a cada lado. Cruzarla es subir.
+    const mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2;
+    const px = -uz, pz = ux;
+    const pasos = Math.max(2, Math.ceil((2 * C.gate) / Math.min(TER.dx, TER.dz)));
+    for (let k = 0; k <= pasos; k++) {
+      const t = (k / pasos - 0.5) * 2 * C.gate;
+      const x = mx + px * t, z = mz + pz * t;
+      const i = Math.round((x - TER.x0) / TER.dx), j = Math.round((z - TER.z0) / TER.dz);
+      if (i < 1 || i >= n - 1 || j < 1 || j >= n - 1) continue;
+      // el salto se reparte entre las dos aristas segun la direccion del eje
+      const e = j * n + i;                       // `k` ya es el indice del bucle
+      dH[e] += salto * ux; cH[e] += Math.abs(ux);
+      dV[e] += salto * uz; cV[e] += Math.abs(uz);
+    }
+    gates++;
+  }
+
+  for (let k = 0; k < dH.length; k++) {
+    if (cH[k] > 1e-6) dH[k] /= cH[k];
+    if (cV[k] > 1e-6) dV[k] /= cV[k];
+  }
+
+  // Relajacion de Gauss-Seidel: cada celda se acomoda al promedio de lo que le
+  // piden sus vecinas. Converge a la superficie mas suave que respeta los saltos.
+  const H = new Float32Array(n * n);
+  for (let it = 0; it < C.iters; it++) {
+    for (let j = 1; j < n - 1; j++) for (let i = 1; i < n - 1; i++) {
+      const k = j * n + i;
+      H[k] = 0.25 * ((H[k - 1] + dH[k - 1]) + (H[k + 1] - dH[k]) +
+                     (H[k - n] + dV[k - n]) + (H[k + n] - dV[k]));
+    }
+    if ((it & 31) === 31) {                 // el campo puede derivar: se recentra
+      let m = 0;
+      for (const v of H) m += v;
+      m /= H.length;
+      for (let k = 0; k < H.length; k++) H[k] -= m;
+    }
+  }
+
+  let lo = Infinity, hi = -Infinity;
+  for (const v of H) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  TER.field = H;
+  console.info('terrazas:', gates, 'frentes |', (hi - lo).toFixed(2),
+               'm entre la meseta mas baja y la mas alta');
+  return { gates, range: hi - lo, lo, hi };
+}
+
+/** Cota de terraza en un punto, interpolada. */
+function terraceAt(x, z) {
+  if (!TER.field) return 0;
+  const n = TER.n;
+  const gx = clamp((x - TER.x0) / TER.dx, 0, n - 1);
+  const gz = clamp((z - TER.z0) / TER.dz, 0, n - 1);
+  const i = Math.min(n - 2, Math.floor(gx)), j = Math.min(n - 2, Math.floor(gz));
+  const fx = gx - i, fz = gz - j, F = TER.field;
+  const a = F[j * n + i],       b = F[j * n + i + 1];
+  const c = F[(j + 1) * n + i], d = F[(j + 1) * n + i + 1];
+  return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
+}
+
+/** Suma el campo de terrazas a la malla. Va ANTES del sedimento. */
+function applyTerraces() {
+  if (!terrainMesh || !TER.field) return;
+  const pos = terrainMesh.geometry.attributes.position;
+  const ox = terrainMesh.position.x, oz = terrainMesh.position.z;
+  for (let i = 0; i < pos.count; i++) {
+    const y = terrainBaseY[i] + terraceAt(pos.getX(i) + ox, pos.getZ(i) + oz);
+    terrainBaseY[i] = y;
+    pos.setY(i, y);
+  }
+  pos.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+}
+
+/* ------------------------ 10ter. MALEZA INSTANCIADA ----------------------- */
+/**
+ * Matas de pasto como geometria instanciada. Una sola malla de unas pocas
+ * hojas se repite decenas de miles de veces con InstancedMesh: es una unica
+ * llamada de dibujo, que es lo que hace viable el volumen.
+ *
+ * La siembra no es uniforme: se apoya en sedimentAt(), asi que la maleza sale
+ * exactamente donde se acumulo material y deja peladas las zonas barridas.
+ */
+const gGrass = new THREE.Group();
+scene.add(gGrass);
+let grassMesh = null, grassSeed = null;
+const grassTime = { value: 0 };
+
+/** Una mata: `blades` hojas afinadas hacia la punta, inclinadas y giradas. */
+function tuftGeometry(blades, seed) {
+  const pos = [], col = [], alt = [], idx = [];
+  const BASE = [0.24, 0.30, 0.13];   // verde oscuro al pie
+  const TIP  = [0.55, 0.66, 0.30];   // mas claro y seco en la punta
+  let v = 0;
+
+  for (let b = 0; b < blades; b++) {
+    const a  = hash2(b, 0, seed) * Math.PI * 2;
+    const ln = 0.75 + hash2(b, 1, seed) * 0.5;          // largo relativo
+    const lean = 0.18 + hash2(b, 2, seed) * 0.30;       // cuanto se tumba
+    const w0 = 0.055, w1 = 0.008;                       // ancho al pie y a la punta
+    const dx = Math.cos(a), dz = Math.sin(a);
+    const px = -dz, pz = dx;                            // perpendicular, para el ancho
+
+    // cuatro vertices: pie izq/der y punta izq/der
+    const P = [
+      [ px * w0,        0,      pz * w0       ],
+      [-px * w0,        0,     -pz * w0       ],
+      [ px * w1 + dx * lean * ln, ln, pz * w1 + dz * lean * ln],
+      [-px * w1 + dx * lean * ln, ln, -pz * w1 + dz * lean * ln]
+    ];
+    const H = [0, 0, 1, 1];
+    for (let k = 0; k < 4; k++) {
+      pos.push(P[k][0], P[k][1], P[k][2]);
+      alt.push(H[k]);
+      for (let c = 0; c < 3; c++) col.push(BASE[c] + (TIP[c] - BASE[c]) * H[k]);
+    }
+    idx.push(v, v + 1, v + 3, v, v + 3, v + 2);
+    v += 4;
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color',    new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aH',       new THREE.Float32BufferAttribute(alt, 1));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Elige donde va cada mata. Recorre una grilla con jitter y acepta segun el
+ * sedimento: nada por debajo de minSediment, densidad plena a partir de
+ * fullSediment. Devuelve las posiciones en el plano, sin cota.
+ */
+function scatterGrass() {
+  const G = CFG.grass;
+  if (G.density <= 0 || !terrainCleanY) return { xz: new Float32Array(0), n: 0, probadas: 0 };
+
+  const paso = 1 / Math.sqrt(G.density);
+  const w = TG.nx * TG.dx, h = TG.nz * TG.dz;
+  const cols = Math.ceil(w / paso), rows = Math.ceil(h / paso);
+  const xz = new Float32Array(Math.min(G.maxInstances, cols * rows) * 2);
+  let n = 0, probadas = 0;
+
+  for (let j = 0; j < rows && n < G.maxInstances; j++) {
+    for (let i = 0; i < cols && n < G.maxInstances; i++) {
+      const jx = hash2(i, j, G.seed), jz = hash2(i, j, G.seed + 1);
+      const x = TG.x0 + (i + jx) * paso, z = TG.z0 + (j + jz) * paso;
+      probadas++;
+      const d = sedimentAt(x, z, 0);
+      if (d <= G.minSediment) continue;
+      // probabilidad creciente con el espesor
+      const pr = clamp((d - G.minSediment) / Math.max(0.01, G.fullSediment - G.minSediment), 0, 1);
+      if (hash2(i, j, G.seed + 2) > pr) continue;
+      xz[n * 2] = x; xz[n * 2 + 1] = z;
+      n++;
+    }
+  }
+  return { xz, n, probadas };
+}
+
+/** Compone las matrices de instancia leyendo la cota actual del terreno. */
+function placeGrass() {
+  if (!grassMesh || !grassSeed) return;
+  const G = CFG.grass;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+  const p = new THREE.Vector3(), sc = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let k = 0; k < grassSeed.n; k++) {
+    const x = grassSeed.xz[k * 2], z = grassSeed.xz[k * 2 + 1];
+    const alto = G.height * (1 - G.heightVary + 2 * G.heightVary * hash2(k, 3, G.seed));
+    const ancho = 0.8 + hash2(k, 4, G.seed) * 0.5;
+    q.setFromAxisAngle(up, hash2(k, 5, G.seed) * Math.PI * 2);
+    p.set(x, terrainSurfaceY(x, z) - 0.03, z);     // un poco hundida, sin pie flotante
+    sc.set(ancho, alto, ancho);
+    grassMesh.setMatrixAt(k, m.compose(p, q, sc));
+  }
+  grassMesh.instanceMatrix.needsUpdate = true;
+  grassMesh.computeBoundingSphere();
+}
+
+/** Rehace la maleza entera con los parametros actuales. */
+function buildGrass() {
+  clearGroup(gGrass, true);
+  grassMesh = null;
+  const G = CFG.grass;
+  grassSeed = scatterGrass();
+  if (!grassSeed.n) return { n: 0, tris: 0 };
+
+  const geo = tuftGeometry(G.blades, G.seed);
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.92, metalness: 0,
+    side: THREE.DoubleSide
+  });
+  // Vaiven: desplaza la punta segun el tiempo y la posicion de la instancia.
+  // Va en el vertex shader porque mover 240k matas por CPU seria inviable.
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = grassTime;
+    sh.uniforms.uWind = { value: G.wind };
+    sh.vertexShader = 'uniform float uTime;\nuniform float uWind;\nattribute float aH;\n'
+                    + sh.vertexShader.replace('#include <begin_vertex>',
+      `#include <begin_vertex>
+       float fx = instanceMatrix[3].x, fz = instanceMatrix[3].z;
+       float k = aH * aH;                       // solo se dobla la punta
+       transformed.x += sin(uTime * 1.7 + fx * 0.30 + fz * 0.21) * k * uWind;
+       transformed.z += cos(uTime * 1.3 + fz * 0.27) * k * uWind * 0.6;`);
+  };
+
+  grassMesh = new THREE.InstancedMesh(geo, mat, grassSeed.n);
+  grassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  grassMesh.castShadow = false;      // 240k sombras no valen lo que cuestan
+  grassMesh.receiveShadow = true;
+  gGrass.add(grassMesh);
+  placeGrass();
+
+  const tris = geo.index.count / 3 * grassSeed.n;
+  console.info('maleza:', grassSeed.n, 'matas de', grassSeed.probadas, 'posiciones probadas',
+               '|', (tris / 1000).toFixed(0) + 'k triangulos en 1 draw call');
+  return { n: grassSeed.n, tris };
+}
+
+/* ------- 11. RESPALDO: esquema del monumento si Overpass no responde ------- */
+/** Datos SINTETICOS y aproximados, solo para que el prototipo sea demostrable
+ *  sin red. Se rotula como tal en el HUD; no son datos de OSM. */
+function syntheticMonument() {
+  const C = { lon: -60.63036, lat: -32.94764 };   // Propileo / Torre
+  const rect = (dx, dz, w, d, rot = 0) => {
+    const c = World.toWorld(C.lon, C.lat);
+    const cs = Math.cos(rot), sn = Math.sin(rot), out = [];
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const lx = sx * w / 2, lz = sz * d / 2;
+      out.push({ x: c.x + dx + lx * cs - lz * sn, z: c.z + dz + lx * sn + lz * cs });
+    }
+    return out;
+  };
+  const defs = [
+    [rect(0,   40, 62, 70), { 'building:part': 'yes', height: '10' }],
+    [rect(0,   30, 40, 40), { 'building:part': 'yes', height: '24' }],
+    [rect(0,   26, 24, 24), { 'building:part': 'yes', height: '45' }],
+    [rect(0,   26, 14, 14), { 'building:part': 'yes', height: '70' }],
+    [rect(0, -110, 46, 90), { 'building:part': 'yes', height: '12' }],
+    [rect(0,  -60, 30, 30), { 'building:part': 'yes', height: '6'  }]
+  ];
+  for (const [ring, tags] of defs) {
+    const m = extrudeFootprint(ring, [], tags, 'part');
+    if (m) gBuild.add(m);
+  }
+  return { bld: 0, part: defs.length, surf: 0, layers: 0, jobs: null,
+           footprints: [], stepLines: [] };
+}
+
+/* --------------------- 11bis. RECONSTRUCCION EN CALIENTE ------------------ */
+
+/** Vacia un grupo liberando su geometria (y el material si es propio suyo). */
+function clearGroup(g, ownMaterial = false) {
+  for (const o of g.children) {
+    o.geometry?.dispose();
+    if (ownMaterial) o.material?.dispose();
+  }
+  g.clear();
+}
+
+/**
+ * Rehace el terreno y TODO lo que se apoya en el con los parametros actuales
+ * de CFG.dem. Reusa los elementos OSM ya descargados, asi que no vuelve a
+ * pedir nada a la red.
+ *
+ * El orden importa y es el mismo que en main(): alturas del terreno primero,
+ * despues volumenes, y al final las superficies drapeadas. Si se altera, las
+ * veredas quedan drapeadas sobre un terreno que despues cambia.
+ */
+function rebuildAll() {
+  if (!terrainMesh || !window.__OSM) return;
+  const t0 = performance.now();
+  dem.prepare(CFG.dem);
+
+  const pos = terrainMesh.geometry.attributes.position;
+  const ox = terrainMesh.position.x, oz = terrainMesh.position.z;
+  for (let i = 0; i < pos.count; i++) {
+    const h = groundAt(pos.getX(i) + ox, pos.getZ(i) + oz);
+    terrainBaseY[i] = h;
+    pos.setY(i, h);
+  }
+  pos.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+
+  clearGroup(gBuild); clearGroup(gSurf, true);
+  STITCH.open = 0;
+
+  const stats = processOSM(window.__OSM);
+  buildTerraceField(stats.stepLines);
+  applyTerraces();
+  gradeRoads(stats.jobs.lineJobs);
+  terrainCleanY = Float32Array.from(terrainBaseY);
+  const surf = buildSurfaces(stats.jobs);
+  buildObstacleField(stats.footprints);
+  buildStepsField(stats.stepLines);
+  applyRubble();
+  buildGrass();
+
+  ui.stat('s-ele',    fmt(dem.min) + ' – ' + fmt(dem.max) + ' m s.n.m.');
+  ui.stat('s-bld',    stats.bld);
+  ui.stat('s-part',   stats.part);
+  ui.stat('s-surf',   surf.count + (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
+  ui.stat('s-ter',     TER.field ? (CFG.terrace.fraction * 100).toFixed(0) + '% · alcance ' +
+                       CFG.terrace.gate.toFixed(0) + ' m' : '—');
+  document.getElementById('s-layers').innerHTML =
+    surf.report.map(([id, n]) => id + ' <b>' + n + '</b>').join(' · ');
+
+  applyExaggeration(parseFloat(document.getElementById('r-exag').value));
+  console.info('reconstruido en', (performance.now() - t0).toFixed(0) + ' ms',
+               '| relief =', CFG.dem.relief.toFixed(2),
+               '| elevacion', fmt(dem.min), '-', fmt(dem.max));
+}
+
+/* ------------------------------- 12. CAMARA ------------------------------- */
+
+const MONUMENT = { lon: -60.63036, lat: -32.94764 };   // Monumento a la Bandera
+let focusPoint = new THREE.Vector3();
+
+function frameMonument(distance = 420) {
+  const p = World.toWorld(MONUMENT.lon, MONUMENT.lat);
+  const y = groundAt(p.x, p.z);
+  focusPoint.set(p.x, y + 25, p.z);
+  controls.target.copy(focusPoint);
+  camera.position.set(p.x + distance * 0.75, y + distance * 0.55, p.z + distance * 0.85);
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  // reencuadrar la camara de sombras sobre el monumento
+  sun.target.position.copy(focusPoint);
+  sun.position.copy(focusPoint).add(new THREE.Vector3(-420, 620, 380));
+  sun.target.updateMatrixWorld();
+}
+
+/* --------------------------------- 13. MAIN ------------------------------- */
+
+async function main() {
+  CFG.dem.relief = 1 - parseFloat(document.getElementById('r-flat').value) / 100;
+  CFG.rubble.amount = parseFloat(document.getElementById('r-rub').value) / 100;
+  CFG.terrace.fraction = parseFloat(document.getElementById('r-ter').value) / 100;
+  CFG.terrace.gate     = parseFloat(document.getElementById('r-tg').value);
+  CFG.grass.density = parseFloat(document.getElementById('r-gd').value) / 100;
+  CFG.grass.height  = parseFloat(document.getElementById('r-gh').value) / 100;
+  const bbox = CFG.bbox;
+  World.init((bbox.w + bbox.e) / 2, (bbox.s + bbox.n) / 2);
+
+  // --- 13.1 extension del escenario: mosaico raster alineado a teselas ------
+  const rRange = tileRange(bbox, CFG.rasterZoom);
+  const extBbox = {
+    w: mx2lon(rRange.minX), e: mx2lon(rRange.maxX),
+    n: my2lat(rRange.maxY), s: my2lat(rRange.minY)
+  };
+
+  // --- 13.2 DEM Terrarium ---------------------------------------------------
+  const dRange = tileRange(extBbox, CFG.demZoom);
+  let demLabel = 'Terrarium z' + CFG.demZoom;
+  try {
+    ui.set('descargando teselas Terrarium (' + dRange.cols + 'x' + dRange.rows + ') ...');
+    const mos = await buildMosaic(CFG.demEndpoints, dRange, 256, p => ui.prog(p * 0.35));
+    const img = mos.ctx.getImageData(0, 0, mos.canvas.width, mos.canvas.height);
+    dem = new TerrariumSampler(img, dRange);
+    dem.prepare(CFG.dem);
+    if (mos.failed) demLabel += ' (' + mos.failed + '/' + mos.total + ' teselas faltantes)';
+  } catch (e) {
+    console.warn('Terrarium no disponible:', e);
+    dem = syntheticSampler(dRange);
+    dem.prepare(CFG.dem);
+    demLabel = 'SINTETICO (Terrarium inaccesible)';
+    ui.set('Terrarium inaccesible: usando DEM sintetico', 'warn');
+  }
+  ui.stat('s-dem', demLabel);
+  ui.stat('s-ele', fmt(dem.min) + ' – ' + fmt(dem.max) + ' m s.n.m.');
+  ui.prog(0.4);
+
+  // --- 13.3 raster de contexto sobre el terreno ----------------------------
+  let tex = null;
+  try {
+    ui.set('descargando mapa base (' + rRange.cols + 'x' + rRange.rows + ' teselas) ...');
+    const mos = await buildMosaic(CFG.rasterEndpoints, rRange, 256,
+                                  p => ui.prog(0.4 + p * 0.25));
+    tex = new THREE.CanvasTexture(mos.canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    tex.needsUpdate = true;
+  } catch (e) {
+    console.warn('raster no disponible:', e);
+  }
+
+  // --- 13.4 malla del terreno ----------------------------------------------
+  ui.set('generando malla del terreno (' + CFG.segments + 'x' + CFG.segments + ') ...');
+  buildTerrain(rRange, tex);
+  ui.prog(0.7);
+
+  frameMonument();
+  render();   // primer cuadro: ya se ve el terreno mientras llega Overpass
+
+  // --- 13.5 vectores OSM ----------------------------------------------------
+  let stats, source = 'OpenStreetMap / Overpass';
+  try {
+    const got = await fetchOsmData();
+    const elements = got.elements;
+    source = got.source;
+    window.__OSM = elements;   // para inspeccionar los tags desde la consola
+    ui.set('extruyendo ' + elements.length + ' elementos OSM ...');
+    stats = processOSM(elements);
+    if (stats.bld + stats.part === 0) throw new Error('sin edificios en el bbox');
+  } catch (e) {
+    console.warn('Overpass:', e);
+    stats = syntheticMonument();
+    source = 'DEMO sintetica (Overpass no respondio)';
+    ui.set('Overpass no disponible: volumenes esquematicos de demostracion', 'warn');
+  }
+
+  // Las terrazas van ANTES de fijar el terreno limpio: el solado tiene que
+  // apoyarse en el terreno ya escalonado, no en el DEM pelado.
+  ui.set('escalonando el terreno ...');
+  const ter = buildTerraceField(stats.stepLines);
+  applyTerraces();
+
+  // Nivelacion del terreno bajo la red de circulacion. Va DESPUES de las
+  // terrazas (nivela contra el terreno ya escalonado) y ANTES de fijar el
+  // terreno limpio, que es lo que despues usa el solado para apoyarse.
+  ui.set('nivelando el terreno bajo las calles ...');
+  const grd = gradeRoads(stats.jobs.lineJobs);
+
+  // El solado se drapea sobre el terreno LIMPIO; el sedimento viene despues y
+  // es el que decide que queda tapado y que asoma.
+  terrainCleanY = Float32Array.from(terrainBaseY);
+  ui.set('drapeando superficies sobre el terreno ...');
+  const surf = buildSurfaces(stats.jobs);
+
+  ui.set('acumulando sedimento y maleza ...');
+  buildObstacleField(stats.footprints);
+  buildStepsField(stats.stepLines);
+  const rub = applyRubble();
+  ui.set('sembrando maleza ...');
+  const gr = buildGrass();
+  stats.surf = surf.count; stats.layers = surf.layers;
+  document.getElementById('s-layers').innerHTML =
+    surf.report.map(([id, n]) => id + ' <b>' + n + '</b>').join(' · ') +
+    (surf.failed.length ? ' <span style="color:var(--err)">falló: ' + surf.failed.join(', ') + '</span>' : '');
+  console.info('superficies:', surf.count, 'en', surf.layers, 'capas',
+               '| anillos descartados por no cerrar:', STITCH.open,
+               '| terrazas', ter.range.toFixed(2) + ' m',
+               '| nivelado', (100 * grd.touched / grd.total).toFixed(0) + '% del terreno,',
+               'hasta', grd.max.toFixed(2), 'm',
+               '| solado tapado', (100 * rub.raised / rub.total).toFixed(0) + '%',
+               '| escaleras tapadas', (100 * rub.escTapada).toFixed(0) + '%',
+               '| maximo', rub.max.toFixed(2), 'm');
+
+  ui.stat('s-bld',    stats.bld);
+  ui.stat('s-part',   stats.part);
+  ui.stat('s-surf',   stats.surf + (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
+  ui.stat('s-ter',    ter.gates + ' frentes · ' + ter.range.toFixed(2) + ' m de desnivel');
+  ui.stat('s-grass',  gr.n.toLocaleString('es-AR') + ' matas · ' +
+                      (gr.tris / 1000).toFixed(0) + 'k tri · 1 draw call');
+  ui.stat('s-rub',    (100 * rub.raised / rub.total).toFixed(0) + '% del solado · ' +
+                      (100 * rub.escTapada).toFixed(0) + '% de escaleras · hasta ' +
+                      rub.max.toFixed(2) + ' m');
+  if (!/DEMO|SINTETICO/.test(source + demLabel))
+    ui.set('listo — ' + source, 'ok');
+  else
+    ui.set(source, 'warn');
+
+  ui.prog(1);
+  ui.splash.style.opacity = '0';
+  setTimeout(() => ui.splash.remove(), 600);
+}
+
+/* ------------------------------ 14. UI / EVENTOS -------------------------- */
+
+document.getElementById('c-raster').onchange = e => {
+  if (!terrainMesh) return;
+  terrainMesh.material.map = e.target.checked ? terrainMesh.userData.tex : null;
+  terrainMesh.material.color.set(0xffffff);
+  terrainMesh.material.needsUpdate = true;
+};
+document.getElementById('c-wire').onchange = e => {
+  if (terrainMesh) terrainMesh.material.wireframe = e.target.checked;
+};
+document.getElementById('c-surf').onchange  = e => { gSurf.visible  = e.target.checked; };
+document.getElementById('c-bld').onchange   = e => { gBuild.visible = e.target.checked; };
+
+
+document.getElementById('c-grass').onchange = e => { gGrass.visible = e.target.checked; };
+
+/* Las terrazas cambian la base del terreno, asi que obligan a rehacer todo lo
+   que se apoya en el: solado, sedimento y maleza. */
+for (const [id, key, div, fmtv] of [
+  ['r-ter', 'fraction', 100, v => (v * 100).toFixed(0) + '%'],
+  ['r-tg',  'gate',       1, v => v.toFixed(0) + ' m']
+]) {
+  const el = document.getElementById(id);
+  el.oninput = () => {
+    document.getElementById(id + '-v').textContent = fmtv(parseFloat(el.value) / div);
+  };
+  el.onchange = () => {
+    CFG.terrace[key] = parseFloat(el.value) / div;
+    ui.set('escalonando el terreno …');
+    requestAnimationFrame(() => { rebuildAll(); ui.set('listo', 'ok'); });
+  };
+}
+
+/* La densidad obliga a resembrar; la altura solo recompone las matrices, que
+   es mucho mas barato y se puede aplicar al vuelo. */
+const rGd = document.getElementById('r-gd');
+rGd.oninput = () => {
+  document.getElementById('r-gd-v').textContent = (rGd.value / 100).toFixed(2) + ' /m²';
+};
+rGd.onchange = () => {
+  CFG.grass.density = parseFloat(rGd.value) / 100;
+  ui.set('resembrando maleza …');
+  requestAnimationFrame(() => {
+    const gr = buildGrass();
+    ui.stat('s-grass', gr.n.toLocaleString('es-AR') + ' matas · ' +
+                       (gr.tris / 1000).toFixed(0) + 'k tri · 1 draw call');
+    ui.set('listo', 'ok');
+  });
+};
+
+const rGh = document.getElementById('r-gh');
+rGh.oninput = () => {
+  CFG.grass.height = parseFloat(rGh.value) / 100;
+  document.getElementById('r-gh-v').textContent = CFG.grass.height.toFixed(2) + ' m';
+  placeGrass();
+};
+
+const rRub = document.getElementById('r-rub');
+rRub.oninput = () => {
+  document.getElementById('r-rub-v').textContent = (parseFloat(rRub.value) / 100).toFixed(2) + ' m';
+};
+rRub.onchange = () => {
+  CFG.rubble.amount = parseFloat(rRub.value) / 100;
+  ui.set('acumulando sedimento …');
+  requestAnimationFrame(() => { rebuildAll(); ui.set('listo', 'ok'); });
+};
+
+const rFlat = document.getElementById('r-flat');
+rFlat.oninput = () => {
+  document.getElementById('r-flat-v').textContent = rFlat.value + '%';
+};
+// El rebuild se dispara al soltar, no en cada pixel del arrastre.
+rFlat.onchange = () => {
+  CFG.dem.relief = 1 - parseFloat(rFlat.value) / 100;
+  ui.set('recalculando terreno …');
+  requestAnimationFrame(() => { rebuildAll(); ui.set('listo', 'ok'); });
+};
+
+const rExag = document.getElementById('r-exag');
+rExag.oninput = () => {
+  const k = parseFloat(rExag.value);
+  document.getElementById('r-exag-v').textContent = k.toFixed(1) + '×';
+  applyExaggeration(k);
+};
+
+addEventListener('keydown', ev => {
+  const k = ev.key.toLowerCase();
+  if (k === 'r') frameMonument();
+  if (k === 'w') {
+    const c = document.getElementById('c-wire');
+    c.checked = !c.checked; c.onchange({ target: c });
+  }
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ------------------------------- 15. BUCLE -------------------------------- */
+
+function render() { renderer.render(scene, camera); }
+let tPrev = performance.now();
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  grassTime.value += (now - tPrev) / 1000;   // el vaiven lo resuelve la GPU
+  tPrev = now;
+  controls.update();
+  render();
+}
+animate();
+
+main().catch(err => {
+  console.error(err);
+  ui.set('error: ' + err.message, 'err');
+});
+</script>
+</body>
+</html>
