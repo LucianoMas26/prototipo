@@ -56,8 +56,9 @@
   <div class="row"><span class="k">Elevación</span><b id="s-ele">—</b></div>
   <div class="row"><span class="k">Edificios</span><b id="s-bld">—</b></div>
   <div class="row"><span class="k">building:part</span><b id="s-part">—</b></div>
+  <div class="row"><span class="k">Alturas</span><b id="s-alturas">—</b></div>
+  <div class="row"><span class="k">Techos 3D</span><b id="s-roof">—</b></div>
   <div class="row"><span class="k">Superficies</span><b id="s-surf">—</b></div>
-  <div class="row"><span class="k">Terrazas</span><b id="s-ter">—</b></div>
   <div class="row"><span class="k">Cubierto</span><b id="s-rub">—</b></div>
   <div class="row"><span class="k">Maleza</span><b id="s-grass">—</b></div>
   <div id="s-layers" class="tiny">—</div>
@@ -67,12 +68,6 @@
   <label class="chk"><input type="checkbox" id="c-wire"> Malla del terreno (wireframe)</label>
   <label class="chk"><input type="checkbox" id="c-bld" checked> Edificios</label>
   <label class="chk"><input type="checkbox" id="c-grass" checked> Maleza</label>
-  <div class="rng"><span>Terrazas</span>
-    <input type="range" id="r-ter" min="0" max="100" step="5" value="30">
-    <b id="r-ter-v">30%</b></div>
-  <div class="rng"><span>Alcance terrazas</span>
-    <input type="range" id="r-tg" min="30" max="400" step="10" value="150">
-    <b id="r-tg-v">150 m</b></div>
   <div class="rng"><span>Maleza</span>
     <input type="range" id="r-gd" min="0" max="30" step="1" value="9">
     <b id="r-gd-v">0.09 /m²</b></div>
@@ -91,15 +86,15 @@
 </div>
 
 <div id="legend" class="panel">
-  <div><span class="sw" style="background:#c08457"></span>base / basamento (&lt; 18 m)</div>
-  <div><span class="sw" style="background:#d9a878"></span>cuerpo escalonado (18–40 m)</div>
-  <div><span class="sw" style="background:#efe9df"></span>torre / remate (&gt; 40 m)</div>
-  <div><span class="sw" style="background:#aeb4bc"></span>edificio genérico OSM</div>
-  <div><span class="sw" style="background:#c2a98a"></span>escalera (highway=steps) con marcas de escalón</div>
+  <div><span class="sw" style="background:#dedad0"></span>base / basamento (&lt; 18 m, travertino)</div>
+  <div><span class="sw" style="background:#e6e2d8"></span>cuerpo escalonado (18–40 m, travertino)</div>
+  <div><span class="sw" style="background:#efebe2"></span>torre / remate (&gt; 40 m, travertino)</div>
+  <div><span class="sw" style="background:#b5b9be"></span>edificio genérico OSM</div>
+  <div><span class="sw" style="background:#e6e1d5"></span>escalera (highway=steps) recta sin discos</div>
   <div><span class="sw" style="background:#70603f"></span>sedimento · <span class="sw" style="background:#546f38"></span>maleza — tapan el solado donde se acumulan</div>
   <div><span class="sw" style="background:#4a5c22"></span>matas instanciadas, sembradas sobre el sedimento</div>
-  <div><span class="sw" style="background:#62914a"></span>parque / césped · <span class="sw" style="background:#2e6d97"></span>agua · <span class="sw" style="background:#9c8461"></span>muelle</div>
-  <div><span class="sw" style="background:#b4ada0"></span>calzada · <span class="sw" style="background:#cdc6b7"></span>vereda · <span class="sw" style="background:#7b7a75"></span>estacionamiento</div>
+  <div><span class="sw" style="background:#6ea344"></span>parque / césped · <span class="sw" style="background:#2b6c99"></span>agua · <span class="sw" style="background:#a89474"></span>muelle</div>
+  <div><span class="sw" style="background:#3c3f46"></span>calzada (asfalto) · <span class="sw" style="background:#dcd8cf"></span>vereda · <span class="sw" style="background:#f5f5f5"></span>marcas/cebra</div>
   <div><span class="sw" style="background:linear-gradient(135deg,#E6E4D8,#8fa1b5)"></span>color real de OSM (<code>building:colour</code>)</div>
 </div>
 
@@ -164,6 +159,36 @@ const CFG = {
   levelHeight: 3.2,             // metros por building:levels si no hay tag height
   defaultBuildingHeight: 8,
 
+  // OSM casi nunca trae la altura: en este bbox, 1132 de 1198 edificios (94%)
+  // no declaran ni height ni building:levels, y 1055 son un "building=yes"
+  // pelado. Con el default todos quedan en 8 m y el centro se ve como un
+  // pueblo. ArcGIS no tiene este problema porque su capa mezcla OSM con
+  // Microsoft y Google, que si traen alturas fotogrametricas.
+  //
+  // Con esto activado, a cada edificio sin dato se le asigna una altura
+  // MUESTREADA de los que SI declaran en la misma descarga, por tipo de
+  // building=*. No es un dato: es una estimacion, y el HUD la cuenta aparte.
+  // El DEM no sirve para esto: se probo estimar la altura como superficie
+  // cruda menos suelo suavizado y la correlacion contra lo declarado fue 0,13
+  // (SRTM postea cada ~30 m y no resuelve edificios sueltos).
+  estimateHeights: true,
+
+  // Huella por debajo de la cual una altura estimada se limita a 2 niveles:
+  // garitas, kioscos y cocheras no pueden salir de 11 pisos por sorteo.
+  estimateMinArea: 60,
+
+  // Piletas y espejos de agua como CUENCO, no como calcomania sobre el suelo.
+  // Deformar el terreno no sirve: la malla tiene celdas de ~4,7 m y un espejo
+  // del monumento mide 31x15 m, o sea 3 celdas de ancho; la interpolacion
+  // bilineal daria una rampa de 4,7 m en vez de un borde, y como la malla esta
+  // alineada a los ejes y los espejos van rotados, el contorno saldria
+  // escalonado. El poligono da el borde exacto.
+  basins: true,
+  basinDepth: 0.55,        // profundidad del cuenco, m
+  basinWaterDrop: 0.12,    // cuanto queda el agua por debajo del brocal, m
+  basinCoping: 0.45,       // ancho del brocal, m
+  basinMaxArea: 4000,      // por encima de esto no se cava (rios, lagunas)
+
   // SRTM (origen de Terrarium) es un modelo de SUPERFICIE: incluye techos de
   // edificios y ruido de restitucion. En una ciudad plana como Rosario eso
   // produce un terreno bacheado que no existe.
@@ -175,6 +200,47 @@ const CFG = {
   //   relief       -> cuanto del detalle sobrevive. 1 = solo se quita ruido,
   //                   0 = queda unicamente la forma de gran escala (la barranca)
   dem: { detailRadius: 1, baseRadius: 16, passes: 3, relief: 0.35 },
+
+  // Donde apoya un volumen dentro del rango de terreno bajo su huella:
+  // Percentil del terreno bajo el grupo en el que se apoya la plataforma.
+  // Como la plataforma nivela el suelo hasta el datum, el apoyo esta
+  // garantizado sea cual sea el valor: esto NO decide si el edificio se
+  // entierra, solo cuanto se toca el terreno.
+  //   1   = cota MAXIMA. Es lo que exige el zocalo: con el apoyo en el punto
+  //         mas alto, el terreno no puede asomar por encima de la base del
+  //         edificio en ningun punto de la huella, por empinado que sea.
+  //   0.5 = solo tiene sentido con las plataformas encendidas (padMargin > 0),
+  //         que es el modo que TOCA el terreno.
+  buildingAnchor: 1,
+
+  // MODO A (desactivado): nivelar el terreno bajo cada edificio. Resuelve todo
+  // pero mueve el DEM, y en barranca el aplanado se nota. Poner aqui los metros
+  // de transicion (6 anda bien) para volver a encenderlo.
+  padMargin: 0,
+
+  // MODO B (activo): no se toca el terreno. Cada grupo de edificios lleva su
+  // propio ZOCALO, que es geometria del edificio y no del terreno: rellena
+  // desde bajo el suelo hasta la cota de apoyo. Es lo que hace OSM2World, y se
+  // lee como lo que realmente es -- el basamento del Monumento, la medianera
+  // de una manzana en pendiente.
+  plinths: true,
+
+  // Distancia bajo la cual dos edificios se consideran pegados (medianera).
+  // En OSM los vecinos comparten los nodos de la pared, asi que alcanza con
+  // una tolerancia chica; subirla suelda manzanas separadas por un pasaje.
+  weldTol: 0.5,
+
+  // Tope de extension de un grupo soldado por contacto, en metros. Una manzana
+  // de Rosario mide ~110 m: por debajo de eso se solidarizan las piezas de una
+  // misma estructura sin fundir la manzana entera en una sola terraza.
+  weldMaxSpan: 60,
+
+  // Tope del slider de exageracion vertical (ver #r-exag). El zocalo enterrado
+  // de cada volumen se dimensiona para ESTE valor: applyExaggeration multiplica
+  // el relieve del terreno por k pero desplaza los edificios en bloque, asi que
+  // un zocalo calculado a 1x se queda corto y el volumen flota. Medido a 6x:
+  // flotaban 190 de 199 volumenes, el peor a 47,94 m en el aire.
+  maxExag: 6,
 
   // Sedimento y maleza. El terreno se levanta de forma irregular por encima
   // del solado, que quedo drapeado sobre el terreno LIMPIO: donde el sedimento
@@ -197,18 +263,6 @@ const CFG = {
     // amount * stairMul * (1 - stairVary) < 0,305 m, el espesor de la senda.
     stairVary:  0.45,  // variacion del monton a lo largo de la traza
     seed:       1337
-  },
-
-  // Terrazas. Una escalera no es solo un objeto: es la evidencia de que las
-  // dos zonas que conecta estan a distinta altura. Se impone ese salto y se
-  // deja que el terreno de cada lado suba o baje en bloque.
-  terrace: {
-    fraction:  0.30,   // porcion del desnivel declarado por OSM que se aplica
-    riser:     0.19,   // metros por escalon, para convertir step_count a altura
-    gate:      150,    // largo del frente de terraza a cada lado (m)
-    iters:     400,    // relajacion del campo
-    grid:      192,    // resolucion del campo
-    maxJump:   6       // tope de salto por escalera (m)
   },
 
   // Maleza: matas instanciadas sembradas sobre el sedimento. No reemplaza al
@@ -571,12 +625,12 @@ controls.minDistance = 20;
 controls.maxDistance = 3500;
 
 // --- Iluminacion: sol direccional con sombras + cielo/hemisferio + relleno ---
-const sun = new THREE.DirectionalLight(0xfff2e0, 2.4);
+const sun = new THREE.DirectionalLight(0xfff8ee, 2.3);
 sun.position.set(-420, 620, 380);           // sol del NO, sombras largas hacia el SE
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.bias = -0.0006;
-sun.shadow.normalBias = 0.6;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.5;
 {
   const c = sun.shadow.camera, R = 700;
   c.left = -R; c.right = R; c.top = R; c.bottom = -R;
@@ -584,8 +638,8 @@ sun.shadow.normalBias = 0.6;
   c.updateProjectionMatrix();
 }
 scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(0xbcd8ff, 0x5b5348, 1.1));
-scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+scene.add(new THREE.HemisphereLight(0xd4e7ff, 0x68705c, 1.05));
+scene.add(new THREE.AmbientLight(0xffffff, 0.30));
 
 // Grupos para poder alternar visibilidad desde el HUD
 const gTerrain = new THREE.Group();
@@ -662,7 +716,7 @@ function buildTerrain(extentRange, rasterTexture) {
   // Arranca sin la ortofoto: las capas vectoriales se leen mejor en 3D y la
   // tesela z17 estirada sobre 1,3 km se ve borrosa. El HUD la puede encender.
   const mat = new THREE.MeshStandardMaterial({
-    map: null, color: 0x8a8578, roughness: 0.96, metalness: 0.0
+    map: null, color: 0x689b42, roughness: 0.95, metalness: 0.0
   });
 
   // PlaneGeometry ordena los vertices por filas: indice = iy*(seg+1) + ix,
@@ -707,9 +761,14 @@ function applyExaggeration(k) {
     g.scale.y = 1;
     g.position.y = 0;
     for (const o of g.children) {
-      if (o.userData.baseGround === undefined) continue;
-      const shift = (o.userData.baseGround - dem.min) * (k - 1);
-      o.position.y = o.userData.baseY + shift;
+      // extrudeFootprint devuelve un THREE.Group (cuerpo + techo)
+      // Cada hijo del grupo tiene su propio baseGround/baseY
+      const meshes = (o.isGroup ? o.children : [o]);
+      for (const m of meshes) {
+        if (m.userData.baseGround === undefined) continue;
+        const shift = (m.userData.baseGround - dem.min) * (k - 1);
+        m.position.y = m.userData.baseY + shift;
+      }
     }
   }
 }
@@ -853,21 +912,35 @@ function parseLength(v) {
 
 /** Altura absoluta y arranque de una parte, segun las etiquetas OSM. */
 function heightOf(tags = {}) {
-  let top = parseLength(tags['height'] ?? tags['building:height'] ?? tags['est_height']);
-  if (!Number.isFinite(top)) {
-    const lv = parseFloat(tags['building:levels'] ?? tags['levels']);
-    if (Number.isFinite(lv)) top = lv * CFG.levelHeight;
-  }
-  if (!Number.isFinite(top)) top = CFG.defaultBuildingHeight;
-
+  // Arranque de la parte: min_height manda; si no, el nivel mas bajo.
   let bottom = parseLength(tags['min_height']);
   if (!Number.isFinite(bottom)) {
     const ml = parseFloat(tags['building:min_level'] ?? tags['min_level']);
     bottom = Number.isFinite(ml) ? ml * CFG.levelHeight : 0;
   }
-  // un techo/cupula extra se suma al cuerpo
-  const roof = parseLength(tags['roof:height']);
-  if (Number.isFinite(roof) && tags['height'] == null) top += roof;
+  if (!(bottom > 0)) bottom = 0;
+
+  // `height` es la cota TOTAL e incluye el techo (asi lo define Simple 3D
+  // Buildings), por eso cuando viene no se le suma nada.
+  let top = parseLength(tags['height'] ?? tags['building:height'] ?? tags['est_height']);
+
+  if (!Number.isFinite(top)) {
+    const lv = parseFloat(tags['building:levels'] ?? tags['levels'] ?? tags['est:levels']);
+    if (Number.isFinite(lv) && lv > 0) {
+      top = lv * CFG.levelHeight;
+      // Hay dos convenciones para building:levels en partes elevadas: contar
+      // desde el suelo o contar solo los niveles propios de la parte. Si
+      // contados desde el suelo no llegan ni al arranque, es la segunda
+      // (p.ej. way/462973282: levels=1 sobre min_level=6, una cupula que si no
+      // se aplastaba a 0,5 m).
+      if (top <= bottom) top = bottom + lv * CFG.levelHeight;
+    } else {
+      top = bottom + CFG.defaultBuildingHeight;
+    }
+    // roof:levels / roof:height NO se cuentan dentro de building:levels:
+    // el techo se apila encima del cuerpo.
+    top += roofHeightOf(tags);
+  }
 
   return { top: Math.max(top, bottom + 0.5), bottom };
 }
@@ -950,34 +1023,395 @@ function shapeFromRings(outer, holes = []) {
 /* ------------------- 8. EXTRUSION Y APOYO SOBRE EL TERRENO ---------------- */
 
 const MAT = {
-  base:   new THREE.MeshStandardMaterial({ color: 0xc08457, roughness: 0.78, metalness: 0.02 }),
-  mid:    new THREE.MeshStandardMaterial({ color: 0xd9a878, roughness: 0.72, metalness: 0.02 }),
-  tower:  new THREE.MeshStandardMaterial({ color: 0xefe9df, roughness: 0.6,  metalness: 0.03 }),
-  plain:  new THREE.MeshStandardMaterial({ color: 0xaeb4bc, roughness: 0.88, metalness: 0.0 }),
-  steps:  new THREE.MeshStandardMaterial({ color: 0x3d7fd6, roughness: 0.62, metalness: 0.05 })
+  base:   new THREE.MeshStandardMaterial({ color: 0xdedad0, roughness: 0.80, metalness: 0.02 }),
+  mid:    new THREE.MeshStandardMaterial({ color: 0xe6e2d8, roughness: 0.74, metalness: 0.02 }),
+  tower:  new THREE.MeshStandardMaterial({ color: 0xefebe2, roughness: 0.65, metalness: 0.03 }),
+  plain:  new THREE.MeshStandardMaterial({ color: 0xb5b9be, roughness: 0.85, metalness: 0.0 }),
+  steps:  new THREE.MeshStandardMaterial({ color: 0xd6d0c2, roughness: 0.80, metalness: 0.02 })
 };
 
-/* Materiales derivados de building:colour, cacheados por color. Muchos
+/* Materiales derivados de building:colour / roof:colour, cacheados por color.
    building:part de la zona traen el color real relevado en campo: por ejemplo
    la relacion 5295126 ("Columnas de la Galeria de Honor") declara #E6E4D8. */
 const COLOR_CACHE = new Map();
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/** Elige el material: color real de OSM si lo hay, si no por rol y altura. */
+/** Devuelve un MeshStandardMaterial cacheado para el hex dado. */
+function matFromHex(hex, roughness = 0.78, metalness = 0.02) {
+  const key = hex.trim().toLowerCase();
+  if (!COLOR_CACHE.has(key))
+    COLOR_CACHE.set(key, new THREE.MeshStandardMaterial({
+      color: new THREE.Color(key), roughness, metalness
+    }));
+  return COLOR_CACHE.get(key);
+}
+
+/** Elige el material del cuerpo: color real de OSM si lo hay, si no por rol y altura. */
 function materialFor(kind, topH, tags = {}) {
   const raw = tags['building:colour'] ?? tags['building:color'];
-  if (raw && HEX.test(raw.trim())) {
-    const key = raw.trim().toLowerCase();
-    if (!COLOR_CACHE.has(key))
-      COLOR_CACHE.set(key, new THREE.MeshStandardMaterial({
-        color: new THREE.Color(key), roughness: 0.78, metalness: 0.02
-      }));
-    return COLOR_CACHE.get(key);
-  }
+  if (raw && HEX.test(raw.trim())) return matFromHex(raw);
   if (kind !== 'part') return MAT.plain;
   if (topH > 40) return MAT.tower;      // torre / remate
   if (topH > 18) return MAT.mid;        // cuerpo escalonado
   return MAT.base;                      // basamento
+}
+
+/** Elige el material del techo: roof:colour si lo hay, si no teja o zinc.
+ *  Los techos usan DoubleSide: la orientacion de los anillos de OSM no es
+ *  consistente y un faldon con la normal invertida se veria negro. */
+const ROOF_MAT_CACHE = new Map();
+function roofMatFromHex(hex, roughness = 0.85, metalness = 0.01) {
+  const col = hex.trim().toLowerCase();
+  const key = col + '|' + roughness + '|' + metalness;
+  if (!ROOF_MAT_CACHE.has(key))
+    ROOF_MAT_CACHE.set(key, new THREE.MeshStandardMaterial({
+      color: new THREE.Color(col), roughness, metalness, side: THREE.DoubleSide
+    }));
+  return ROOF_MAT_CACHE.get(key);
+}
+
+function materialForRoof(tags = {}) {
+  const raw = tags['roof:colour'] ?? tags['roof:color'];
+  if (raw && HEX.test(raw.trim())) return roofMatFromHex(raw);
+  const shape = roofShapeOf(tags) ?? 'flat';
+  switch (shape) {
+    case 'dome': case 'onion':      return roofMatFromHex('#b8b4ac', 0.65, 0.08); // zinc/plomo
+    case 'pyramidal':               return roofMatFromHex('#dedad0', 0.80, 0.02); // hormigon
+    case 'gabled': case 'hipped':
+    case 'half-hipped': case 'pitched':
+    case 'gambrel': case 'mansard': return roofMatFromHex('#7e4431', 0.90, 0.01); // teja
+    case 'skillion':                return roofMatFromHex('#8a7c6e', 0.88, 0.02); // pizarra
+  }
+  // Sin dato de techo: el color del cuerpo apenas oscurecido, para que no salte
+  const bodyRaw = tags['building:colour'] ?? tags['building:color'];
+  if (bodyRaw && HEX.test(bodyRaw.trim()))
+    return roofMatFromHex('#' + new THREE.Color(bodyRaw.trim().toLowerCase())
+                                  .multiplyScalar(0.88).getHexString());
+  return roofMatFromHex('#9e9e9e', 0.85, 0.01);
+}
+
+/* -------- Generadores de geometria de techo 3D (procedural) -------- */
+
+/** roof:shape normalizado, o null si es plano / no declarado. */
+function roofShapeOf(tags = {}) {
+  const s = String(tags['roof:shape'] ?? '').trim().toLowerCase();
+  if (!s || s === 'flat') return null;
+  return s;
+}
+
+/* Conteo de techos generados por forma (se vuelca en el HUD de diagnostico). */
+const ROOF_STATS = {};
+
+/** "812 estimadas de 1010 · 198 con dato de OSM" para el HUD. */
+function alturasReport(a) {
+  if (!a) return '—';
+  const tot = a.declaradas + a.estimadas;
+  if (!tot) return '—';
+  if (!a.estimadas) return a.declaradas + ' con dato de OSM';
+  return a.declaradas + ' de OSM · ' + a.estimadas +
+         ' estimadas (' + (100 * a.estimadas / tot).toFixed(0) + '%)';
+}
+
+/** Vuelca ROOF_STATS al HUD: "12 · gabled 5 · hipped 4 · dome 1". */
+function roofReport() {
+  const e = Object.entries(ROOF_STATS).sort((a, b) => b[1] - a[1]);
+  if (!e.length) return '0';
+  const tot = e.reduce((s, [, n]) => s + n, 0);
+  return tot + ' · ' + e.map(([k, n]) => k + ' ' + n).join(' · ');
+}
+
+/* Altura de techo por defecto (m) cuando roof:height / roof:levels no vienen. */
+const ROOF_DEFAULT_H = {
+  pyramidal: 3, cone: 3, dome: 4, onion: 5, round: 3, skillion: 2,
+  gabled: 3, pitched: 3, hipped: 3, 'half-hipped': 2.5,
+  mansard: 3, gambrel: 3
+};
+
+/** Altura del techo en metros (0 si el edificio no lleva techo con forma). */
+function roofHeightOf(tags = {}) {
+  const shape = roofShapeOf(tags);
+  if (!shape) return 0;
+  const h = parseLength(tags['roof:height']);
+  if (Number.isFinite(h) && h > 0) return h;
+  const lv = parseFloat(tags['roof:levels']);
+  if (Number.isFinite(lv) && lv > 0) return lv * CFG.levelHeight;
+  return ROOF_DEFAULT_H[shape] ?? 3;
+}
+
+/**
+ * Anillo exterior (plano XZ del mundo) -> centroide {x, z} ponderado por area.
+ * Si el area es ~0 cae al promedio simple de los vertices.
+ */
+function ringCentroid2d(ring) {
+  let ax = 0, az = 0, area = 0;
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const a = ring[i], b = ring[(i + 1) % n];
+    const cross = a.x * b.z - b.x * a.z;
+    area  += cross;
+    ax    += (a.x + b.x) * cross;
+    az    += (a.z + b.z) * cross;
+  }
+  area /= 2;
+  if (Math.abs(area) < 1e-9) {
+    let sx = 0, sz = 0;
+    for (const p of ring) { sx += p.x; sz += p.z; }
+    return { x: sx / n, z: sz / n };
+  }
+  return { x: ax / (6 * area), z: az / (6 * area) };
+}
+
+/* Helpers de tesela: acumulan triangulos en un array plano de posiciones. */
+const RF_EPS = 1e-7;
+const rfSame = (a, b) => Math.abs(a.x - b.x) < RF_EPS &&
+                         Math.abs(a.y - b.y) < RF_EPS &&
+                         Math.abs(a.z - b.z) < RF_EPS;
+const rfTri = (v, a, b, c) => {
+  // descarta triangulos degenerados (aparecen al colapsar un quad)
+  if (rfSame(a, b) || rfSame(b, c) || rfSame(a, c)) return;
+  v.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+};
+const rfQuad = (v, a, b, c, d) => { rfTri(v, a, b, c); rfTri(v, a, c, d); };
+const rfGeo  = verts => {
+  if (verts.length < 9) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.computeVertexNormals();
+  return geo;
+};
+
+/**
+ * Techo PIRAMIDAL: cada arista del contorno forma una cara triangular cuyo
+ * vertice superior esta en el centroide, a altura baseY + roofH.
+ */
+function roofPyramidal(outer, baseY, roofH) {
+  if (outer.length < 3 || roofH <= 0) return null;
+  const c = ringCentroid2d(outer);
+  const apex = { x: c.x, y: baseY + roofH, z: c.z };
+  const verts = [], n = outer.length;
+  for (let i = 0; i < n; i++) {
+    const a = outer[i], b = outer[(i + 1) % n];
+    rfTri(verts, { x: a.x, y: baseY, z: a.z }, { x: b.x, y: baseY, z: b.z }, apex);
+  }
+  return rfGeo(verts);
+}
+
+/**
+ * Techo DOMO: semiesfera escalada al radio medio del poligono, centrada en el
+ * centroide a nivel `baseY`.
+ */
+function roofDome(outer, baseY, roofH) {
+  if (outer.length < 3 || roofH <= 0) return null;
+  const c = ringCentroid2d(outer);
+  let rSum = 0;
+  for (const p of outer) rSum += Math.hypot(p.x - c.x, p.z - c.z);
+  const r = rSum / outer.length;
+  if (!(r > 0.05)) return null;
+  const segs = 28;
+  const geo = new THREE.SphereGeometry(r, segs, Math.ceil(segs / 2),
+                                       0, Math.PI * 2, 0, Math.PI / 2);
+  geo.scale(1, roofH / r, 1);          // aplanar/estirar verticalmente
+  geo.translate(c.x, baseY, c.z);
+  return geo;
+}
+
+/**
+ * Techo SKILLION (un agua). `roof:direction` en OSM apunta hacia donde el
+ * faldon DESCIENDE (0=N, 90=E, 180=S, 270=O); el borde alto queda enfrentado.
+ * La altura de cada vertice sale de su proyeccion normalizada sobre ese eje,
+ * relativa al centroide -- nunca de la coordenada absoluta de mundo.
+ */
+function roofSkillion(outer, baseY, roofH, directionDeg) {
+  if (outer.length < 3 || roofH <= 0) return null;
+  const c   = ringCentroid2d(outer);
+  const rad = (directionDeg ?? 180) * Math.PI / 180;
+  const dx  = Math.sin(rad), dz = -Math.cos(rad);   // +X=Este, -Z=Norte
+
+  let tmin = Infinity, tmax = -Infinity;
+  const t = outer.map(p => {
+    const v = (p.x - c.x) * dx + (p.z - c.z) * dz;
+    if (v < tmin) tmin = v;
+    if (v > tmax) tmax = v;
+    return v;
+  });
+  const span = tmax - tmin;
+  if (!(span > 1e-6)) return null;
+  // alto en el extremo opuesto a la direccion de caida
+  const hOf = i => baseY + roofH * (1 - (t[i] - tmin) / span);
+
+  const verts = [], n = outer.length;
+  // muros trapezoidales bajo el faldon
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, a = outer[i], b = outer[j];
+    rfQuad(verts,
+      { x: a.x, y: baseY,  z: a.z }, { x: b.x, y: baseY,  z: b.z },
+      { x: b.x, y: hOf(j), z: b.z }, { x: a.x, y: hOf(i), z: a.z });
+  }
+  // plano inclinado: abanico desde el centroide, que cae sobre el mismo plano
+  const cp = { x: c.x, y: baseY + roofH * (1 + tmin / span), z: c.z };
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, a = outer[i], b = outer[j];
+    rfTri(verts, { x: a.x, y: hOf(i), z: a.z }, { x: b.x, y: hOf(j), z: b.z }, cp);
+  }
+  return rfGeo(verts);
+}
+
+/**
+ * Quita los vertices practicamente alineados con sus vecinos. Un quiebre de
+ * milimetros en la huella (ruido de digitalizacion de OSM) hace que el faldon
+ * retroceda un instante sobre si mismo y deja un pliegue visible: la way
+ * 462973283 tenia un vertice a 2 mm de la recta y el techo se solapaba 1,8 %.
+ */
+function simplifyRing(ring, tol = 0.05) {
+  const n = ring.length;
+  if (n < 4) return ring;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const p = ring[(i + n - 1) % n], c = ring[i], q = ring[(i + 1) % n];
+    const ax = q.x - p.x, az = q.z - p.z;
+    const len = Math.hypot(ax, az);
+    if (len < 1e-9) continue;                       // vecino duplicado
+    const dist = Math.abs((c.x - p.x) * az - (c.z - p.z) * ax) / len;
+    if (dist > tol) out.push(c);
+  }
+  return out.length >= 3 ? out : ring;
+}
+
+/** Eje principal del poligono (PCA de sus vertices) en el plano XZ. */
+function principalAxis(ring) {
+  const c = ringCentroid2d(ring);
+  let sxx = 0, sxz = 0, szz = 0;
+  for (const p of ring) {
+    const x = p.x - c.x, z = p.z - c.z;
+    sxx += x * x; sxz += x * z; szz += z * z;
+  }
+  const theta = 0.5 * Math.atan2(2 * sxz, sxx - szz);
+  return { c, ux: Math.cos(theta), uz: Math.sin(theta) };
+}
+
+/**
+ * Techo de CUMBRERA (gabled / hipped / half-hipped / mansard): se traza una
+ * cumbrera sobre el eje principal de la huella y cada arista del contorno se
+ * conecta con su proyeccion sobre esa cumbrera. Como la proyeccion es continua
+ * a lo largo del borde, la superficie cierra sin huecos sobre cualquier planta.
+ *   inset 0 -> gabled (hastiales verticales en las puntas)
+ *   inset 1 -> hipped (faldon de punta, cumbrera acortada media luz por lado)
+ *   inset 0.5 -> half-hipped
+ */
+function roofRidged(outer, baseY, roofH, inset = 0) {
+  if (outer.length < 3 || roofH <= 0) return null;
+  const { c, ux, uz } = principalAxis(outer);
+  const vx = -uz, vz = ux;                       // eje transversal
+
+  let umin = Infinity, umax = -Infinity, vmin = Infinity, vmax = -Infinity;
+  const uv = outer.map(p => {
+    const dx = p.x - c.x, dz = p.z - c.z;
+    const u = dx * ux + dz * uz, v = dx * vx + dz * vz;
+    if (u < umin) umin = u;
+    if (u > umax) umax = u;
+    if (v < vmin) vmin = v;
+    if (v > vmax) vmax = v;
+    return { u, v };
+  });
+  if (!(umax - umin > 1e-6) || !(vmax - vmin > 1e-6)) return null;
+
+  const vc    = (vmin + vmax) / 2;
+  const halfW = (vmax - vmin) / 2;
+
+  // Una arista que CRUZA la linea de cumbrera tiene un extremo a cada lado,
+  // pero los dos proyectan sobre la cumbrera, entre medio: el cuadrilatero se
+  // cierra en moño y el faldon se pliega sobre si mismo. Se parte la arista en
+  // el punto de cruce, que cae justo bajo la cumbrera y convierte el moño en el
+  // hastial triangular que corresponde.
+  const n = outer.length, pts = [];
+  let uCrossMin = Infinity, uCrossMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    pts.push({ x: outer[i].x, z: outer[i].z, u: uv[i].u });
+    const da = uv[i].v - vc, db = uv[j].v - vc;
+    if (da * db < 0) {
+      const t  = da / (da - db);
+      const uC = uv[i].u + (uv[j].u - uv[i].u) * t;
+      if (uC < uCrossMin) uCrossMin = uC;
+      if (uC > uCrossMax) uCrossMax = uC;
+      pts.push({
+        x: outer[i].x + (outer[j].x - outer[i].x) * t,
+        z: outer[i].z + (outer[j].z - outer[i].z) * t,
+        u: uC
+      });
+    }
+  }
+
+  // La cumbrera llega hasta donde su propia recta sale de la huella, NO hasta
+  // el vertice mas lejano en u. En una planta romboidal (way/462973283) la
+  // punta queda mas alla del final de la cumbrera, y estirarla hasta ahi hacia
+  // que el faldon volviera sobre si mismo y se solapara un 3 %.
+  let uEndA = uCrossMin, uEndB = uCrossMax;
+  if (!(uEndB - uEndA > 1e-6)) { uEndA = umin; uEndB = umax; }   // sin cruces utiles
+  let uA = uEndA + halfW * inset, uB = uEndB - halfW * inset;
+  if (uA > uB) { const mid = (uEndA + uEndB) / 2; uA = uB = mid; }  // planta casi cuadrada
+
+  const apexY = baseY + roofH;
+  // u local -> punto de mundo sobre la cumbrera
+  const ridgeAt = u => ({
+    x: c.x + u * ux + vc * vx, y: apexY, z: c.z + u * uz + vc * vz
+  });
+
+  const verts = [], m = pts.length;
+  for (let i = 0; i < m; i++) {
+    const j = (i + 1) % m, a = pts[i], b = pts[j];
+    const ra = ridgeAt(clamp(a.u, uA, uB));
+    const rb = ridgeAt(clamp(b.u, uA, uB));
+    rfQuad(verts,
+      { x: a.x, y: baseY, z: a.z }, { x: b.x, y: baseY, z: b.z }, rb, ra);
+  }
+  return rfGeo(verts);
+}
+
+/**
+ * Genera la geometria de techo segun roof:shape de OSM.
+ * `baseY` = cota donde termina el cuerpo prismatico y arranca el techo.
+ * `roofH` = altura del techo en metros (ya descontada del cuerpo).
+ * Devuelve {geo, mat} o null si es plano / no se pudo teselar.
+ */
+function buildRoofGeo(ring, baseY, roofH, tags) {
+  const shape = roofShapeOf(tags);
+  if (!shape || !(roofH > 0)) return null;
+  // El domo se queda con el anillo original: su radio sale del promedio de las
+  // distancias al borde y simplificar lo cambiaria.
+  const outer = (shape === 'dome' || shape === 'onion' || shape === 'round')
+    ? ring : simplifyRing(ring);
+
+  // roof:direction acepta grados o rumbo cardinal
+  const dirRaw = tags['roof:direction'] ?? tags['roof:slope:direction'];
+  let dir = 180;
+  if (dirRaw != null) {
+    const txt = String(dirRaw).trim();
+    const num = Number(txt);
+    dir = Number.isFinite(num) && txt !== '' ? num : ({
+      N: 0, NNE: 22.5, NE: 45, ENE: 67.5, E: 90, ESE: 112.5, SE: 135, SSE: 157.5,
+      S: 180, SSW: 202.5, SW: 225, WSW: 247.5, W: 270, WNW: 292.5, NW: 315, NNW: 337.5
+    }[txt.toUpperCase()] ?? 180);
+  }
+
+  let geo = null;
+  switch (shape) {
+    case 'pyramidal': case 'cone':
+      geo = roofPyramidal(outer, baseY, roofH); break;
+    case 'dome': case 'onion': case 'round':
+      geo = roofDome(outer, baseY, roofH); break;
+    case 'skillion': case 'lean_to': case 'shed':
+      geo = roofSkillion(outer, baseY, roofH, dir); break;
+    case 'gabled': case 'pitched': case 'gambrel':
+      geo = roofRidged(outer, baseY, roofH, 0); break;
+    case 'hipped': case 'mansard':
+      geo = roofRidged(outer, baseY, roofH, 1); break;
+    case 'half-hipped':
+      geo = roofRidged(outer, baseY, roofH, 0.5); break;
+    default:
+      geo = roofRidged(outer, baseY, roofH, 0.5); break;
+  }
+  return geo ? { geo, mat: materialForRoof(tags) } : null;
 }
 
 /** Cota minima y maxima del terreno bajo un anillo (evita flotar/enterrar). */
@@ -996,17 +1430,443 @@ function groundRange(ring) {
 }
 
 /**
- * Construye un bloque extruido apoyado en el terreno.
- *  - la base arranca en la cota MINIMA del terreno bajo la huella
- *  - se prolonga hacia abajo la diferencia con la cota MAXIMA, de modo que el
- *    bloque quede enterrado en la pendiente y nunca aparezca flotando.
+ * Cota de apoyo de un anillo suelto, cuando no forma parte de ningun grupo.
+ * `datum` es donde se apoya el volumen y `skirt` cuanto baja el zocalo para
+ * que no quede flotando del lado bajo de la pendiente.
  */
-function extrudeFootprint(outer, holes, tags, kind) {
+function soloGround(ring) {
+  const g = groundRange(ring);
+  const datum = g.lo + (g.hi - g.lo) * CFG.buildingAnchor;
+  return { datum, skirt: (datum - g.lo) * CFG.maxExag + 0.6, solid: true };
+}
+
+/**
+ * ALTURA ESTIMADA PARA LOS EDIFICIOS SIN DATO.
+ *
+ * No se inventa un numero: se aprende de la propia descarga. Se junta la
+ * distribucion de niveles declarados por tipo de building=* y a cada edificio
+ * sin dato se le sortea uno de esos valores observados. Asi el skyline tiene
+ * la forma de la zona -- en este bbox, building=yes da 1,1,2,2,2,2,2,2,3,3,6,
+ * 6,10,11,13 niveles, y apartments una mediana de 12 con cola hasta 40 -- y si
+ * se mueve el bbox a otro barrio, la estimacion se recalibra sola.
+ *
+ * El sorteo va sembrado con el id de OSM: el mismo edificio recibe siempre la
+ * misma altura, entre recargas y entre reconstrucciones con los sliders.
+ *
+ * Devuelve {declaradas, estimadas} para que el HUD las muestre por separado:
+ * una altura estimada no es un dato y el visor no debe hacerla pasar por tal.
+ */
+function estimateMissingHeights(footprints) {
+  const out = { declaradas: 0, estimadas: 0, sinPool: 0 };
+  if (!CFG.estimateHeights) return out;
+
+  const declarado = f => {
+    const t = f.tags;
+    const h = parseLength(t['height'] ?? t['building:height'] ?? t['est_height']);
+    if (Number.isFinite(h) && h > 0) return h / CFG.levelHeight;
+    const lv = parseFloat(t['building:levels'] ?? t['levels']);
+    return Number.isFinite(lv) && lv > 0 ? lv : NaN;
+  };
+
+  // 1. Distribucion observada, por tipo y global. Los building:part NO entran
+  //    en la muestra: son piezas de una estructura, no edificios tipicos, y
+  //    contaminan la cola -- los tres fustes de la torre del Monumento (67, 66
+  //    y 70 m) caian en el pool de "yes" y hacian que el 10% del centro
+  //    saliera de mas de 20 pisos.
+  const porTipo = new Map(), global = [];
+  for (const f of footprints) {
+    const lv = declarado(f);
+    if (!Number.isFinite(lv)) continue;
+    out.declaradas++;
+    if (f.kind === 'part') continue;
+    global.push(lv);
+    const tipo = f.tags.building || 'yes';
+    const a = porTipo.get(tipo);
+    if (a) a.push(lv); else porTipo.set(tipo, [lv]);
+  }
+  for (const a of porTipo.values()) a.sort((x, y) => x - y);
+  global.sort((x, y) => x - y);
+  if (global.length < 5) return out;              // sin con que calibrar
+
+  // 2. sorteo determinista sembrado por el id de OSM (FNV-1a)
+  const semilla = txt => {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < txt.length; i++) {
+      h ^= txt.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h / 4294967296;
+  };
+
+  for (const f of footprints) {
+    if (Number.isFinite(declarado(f))) continue;
+    // una parte no tiene tipo propio: se la estima con la distribucion general
+    const tipo = f.kind === 'part' ? null : (f.tags.building || 'yes');
+    const propio = tipo ? (porTipo.get(tipo) || []) : [];
+    const pool = propio.length >= 5 ? propio : global;
+    const r = semilla((f.src || '') + '|' + Math.round(f.outer[0].x) + ',' + Math.round(f.outer[0].z));
+    let lv = pool[Math.min(pool.length - 1, Math.floor(r * pool.length))];
+    // una huella minuscula no puede salir torre por sorteo
+    if (Math.abs(signedArea(f.outer)) < CFG.estimateMinArea) lv = Math.min(lv, 2);
+    f.tags = { ...f.tags, 'est:levels': lv };     // copia: no se pisa el dato de OSM
+    f.estimada = true;
+    out.estimadas++;
+  }
+  return out;
+}
+
+/**
+ * Cotas del terreno bajo un anillo, incluyendo los vertices de la MALLA que
+ * realmente se dibuja. Muestrear solo las esquinas del anillo no alcanza: la
+ * malla tiene celdas de varios metros y entre esquina y esquina la superficie
+ * interpolada puede quedar mas alta que todas ellas. Medido sobre la zona: con
+ * solo las esquinas, el terreno asomaba por encima del apoyo en 64 de 199
+ * huellas, hasta 1,49 m.
+ */
+function ringGroundSamples(ring) {
+  const hs = ring.map(p => groundAt(p.x, p.z));
+  const c = ringCentroid2d(ring);
+  hs.push(groundAt(c.x, c.z));
+  if (!TG.ready || !terrainBaseY) return hs;
+
+  let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+  for (const p of ring) {
+    if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x;
+    if (p.z < mnz) mnz = p.z; if (p.z > mxz) mxz = p.z;
+  }
+  const W  = TG.nx + 1;
+  const i0 = clamp(Math.floor((mnx - TG.x0) / TG.dx), 0, TG.nx);
+  const i1 = clamp(Math.ceil ((mxx - TG.x0) / TG.dx), 0, TG.nx);
+  const j0 = clamp(Math.floor((mnz - TG.z0) / TG.dz), 0, TG.nz);
+  const j1 = clamp(Math.ceil ((mxz - TG.z0) / TG.dz), 0, TG.nz);
+  // Solo las celdas que la huella TOCA de verdad. Tomar el rectangulo
+  // envolvente entero mete terreno ajeno: en una planta alargada o en diagonal
+  // eso inflaba el apoyo varios metros y sacaba un zocalo que no corresponde.
+  const core = Math.hypot(TG.dx, TG.dz);
+  for (let j = j0; j <= j1; j++) {
+    const z = TG.z0 + j * TG.dz;
+    for (let i = i0; i <= i1; i++) {
+      const x = TG.x0 + i * TG.dx;
+      if (!pointInRing(x, z, ring) && ringDistance(x, z, ring) > core) continue;
+      hs.push(terrainBaseY[j * W + i]);
+    }
+  }
+  return hs;
+}
+
+/**
+ * COTA DE APOYO COMPARTIDA.
+ *
+ * Las alturas de OSM (height, min_height, building:levels) se miden todas
+ * desde una misma base: la del edificio. Si cada huella consulta el terreno
+ * por su cuenta, dos partes declaradas a la misma cota aterrizan a alturas
+ * distintas y las que se apilan dejan de encajar. Medido sobre el DEM real de
+ * la zona: las partes del Monumento apoyaban con hasta 6,6 m de diferencia, y
+ * el techo de la Galeria de Honor (min_height 16) quedaba 1,16 m por debajo
+ * del remate de las columnas que lo sostienen, en vez de 1 m por encima.
+ *
+ * Asi que se agrupan las huellas solidarias -- cada building:part con la
+ * huella mas grande que contiene su centroide, sea el edificio o una parte
+ * mayor -- y todo el grupo comparte un unico datum. Sobre la zona medida da
+ * 165 grupos, el mayor de 6 huellas: no se encadenan manzanas enteras.
+ */
+function assignGroundDatums(footprints) {
+  const n = footprints.length;
+  const info = footprints.map(f => {
+    return { hs: ringGroundSamples(f.outer),
+             area: Math.abs(signedArea(f.outer)),
+             c: ringCentroid2d(f.outer) };
+  });
+
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+
+  // Caja de cada grupo, para poder rechazar una union demasiado extensa.
+  const box = footprints.map(f => {
+    let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+    for (const q of f.outer) {
+      if (q.x < mnx) mnx = q.x; if (q.x > mxx) mxx = q.x;
+      if (q.z < mnz) mnz = q.z; if (q.z > mxz) mxz = q.z;
+    }
+    return { mnx, mxx, mnz, mxz };
+  });
+  const fundir = (a, b) => {
+    const mnx = Math.min(box[a].mnx, box[b].mnx), mxx = Math.max(box[a].mxx, box[b].mxx);
+    const mnz = Math.min(box[a].mnz, box[b].mnz), mxz = Math.max(box[a].mxz, box[b].mxz);
+    parent[a] = b;
+    box[b] = { mnx, mxx, mnz, mxz };
+  };
+  /** Une sin condiciones: las piezas pertenecen al mismo objeto de OSM. */
+  const join = (i, j) => { const a = find(i), b = find(j); if (a !== b) fundir(a, b); };
+  /** Une solo si el grupo resultante no se pasa de extension. */
+  const joinCerca = (i, j) => {
+    const a = find(i), b = find(j);
+    if (a === b) return;
+    const mnx = Math.min(box[a].mnx, box[b].mnx), mxx = Math.max(box[a].mxx, box[b].mxx);
+    const mnz = Math.min(box[a].mnz, box[b].mnz), mxz = Math.max(box[a].mxz, box[b].mxz);
+    if (Math.hypot(mxx - mnx, mxz - mnz) > CFG.weldMaxSpan) return;
+    fundir(a, b);
+  };
+
+  // 1. Una relacion multipoligono entra como un anillo por miembro (las 24
+  //    columnas de la Galeria son 24 huellas sueltas). Son UN solo objeto de
+  //    OSM, asi que apoyan todas a la misma cota pase lo que pase: sin esto,
+  //    dos anillos de relation/5295124 caian en grupos separados con 2,01 m de
+  //    diferencia. Va sin tope: es literalmente el mismo elemento.
+  const bySrc = new Map();
+  for (let i = 0; i < n; i++) {
+    const s = footprints[i].src;
+    if (s == null) continue;
+    if (bySrc.has(s)) join(i, bySrc.get(s)); else bySrc.set(s, i);
+  }
+
+  // 2. Un building:part pertenece a la huella mas grande que lo contiene. Sin
+  //    tope, por la misma razon: es una pieza declarada de ese edificio.
+  for (let i = 0; i < n; i++) {
+    if (footprints[i].kind !== 'part') continue;
+    for (let j = 0; j < n; j++) {
+      if (i === j || info[j].area < info[i].area) continue;
+      if (pointInRing(info[i].c.x, info[i].c.z, footprints[j].outer)) join(i, j);
+    }
+  }
+
+  // 3. Un EDIFICIO dentro de otro, o dos que se TOCAN (medianera compartida,
+  //    o las piezas de una estructura apoyadas una contra otra). Aqui la
+  //    pertenencia ya no esta declarada, solo deducida de la geometria, asi
+  //    que va acotado: sin tope se encadenaban manzanas enteras y el apoyo
+  //    subia al punto mas alto de todo el conjunto -- el zocalo de la Galeria
+  //    pasaba de 2,7 a 7,3 m. Con el tope, los dos pilones del Propileo se
+  //    solidarizan con su columnata (25 m de lado) y la manzana no se funde.
+  for (let i = 0; i < n; i++) {
+    if (footprints[i].kind === 'part') continue;
+    for (let j = 0; j < n; j++) {
+      if (i === j || info[j].area < info[i].area) continue;
+      if (pointInRing(info[i].c.x, info[i].c.z, footprints[j].outer)) joinCerca(i, j);
+    }
+  }
+  // 4. Huellas que se TOCAN. Solo interesa cuando una de las dos es una pieza
+  //    declarada o un volumen ELEVADO: ahi el contacto significa "esto se
+  //    apoya en aquello" y tienen que compartir cota, como los pilones del
+  //    Propileo contra la losa de la Galeria. Dos edificios comunes que solo
+  //    comparten medianera no se solidarizan: en MODO B cada uno se tapa solo,
+  //    y unirlos solo consigue subir el apoyo de ambos al punto mas alto
+  //    (medido: la pared visible subia de 1,32 a 1,62 m de mediana).
+  if (CFG.weldTol > 0) {
+    // En MODO A hay que soldar TODO contacto: dos plataformas vecinas a cotas
+    // distintas se pelean el suelo de la medianera y la manzana queda
+    // escalonada. En MODO B cada volumen se tapa solo, asi que solo interesa
+    // el contacto que significa apoyo.
+    const todo = CFG.padMargin > 0;
+    const apoya = footprints.map(f =>
+      todo || f.kind === 'part' || heightOf(f.tags).bottom > 0.01);
+    const TOL = CFG.weldTol, cells = new Map();
+    for (let i = 0; i < n; i++)
+      for (const q of footprints[i].outer) {
+        const k = Math.round(q.x / TOL) + ',' + Math.round(q.z / TOL);
+        const a = cells.get(k);
+        if (a) { if (a[a.length - 1] !== i) a.push(i); } else cells.set(k, [i]);
+      }
+    const par = (i, j) => { if (i !== j && (apoya[i] || apoya[j])) joinCerca(i, j); };
+    for (const [k, a] of cells) {
+      const [cx, cz] = k.split(',').map(Number);
+      for (let dx = 0; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        if (dx === 0 && dz < 0) continue;
+        const b = (dx || dz) ? cells.get((cx + dx) + ',' + (cz + dz)) : null;
+        if (b) for (const u of a) for (const v of b) par(u, v);
+      }
+      for (let t = 0; t < a.length; t++)
+        for (let u = t + 1; u < a.length; u++) par(a[t], a[u]);
+    }
+  }
+
+  const agg = new Map();
+  for (let i = 0; i < n; i++) {
+    const r = find(i), a = agg.get(r);
+    if (!a) agg.set(r, info[i].hs.slice()); else a.push(...info[i].hs);
+  }
+  // Un unico objeto por grupo, compartido por referencia: asi las plataformas
+  // pueden razonar sobre el grupo entero y no huella por huella.
+  const shared = new Map();
+  for (const [r, hs] of agg) {
+    hs.sort((x, y) => x - y);
+    const datum = hs[Math.min(hs.length - 1,
+                              Math.round(CFG.buildingAnchor * (hs.length - 1)))];
+    shared.set(r, { datum,
+                    skirt: Math.max(0, datum - hs[0]) * CFG.maxExag + 0.6,
+                    solid: false });
+  }
+  for (let i = 0; i < n; i++) {
+    const g = shared.get(find(i));
+    footprints[i].ground = g;
+    // el grupo "pisa el suelo" si alguna de sus huellas arranca de cota cero
+    if (heightOf(footprints[i].tags).bottom <= 0.01) g.solid = true;
+  }
+  return agg.size;
+}
+
+/** Distancia de un punto al borde de un anillo (0 si cae justo encima). */
+function ringDistance(px, pz, ring) {
+  let best = Infinity;
+  for (let i = 0, n = ring.length; i < n; i++) {
+    const a = ring[i], b = ring[(i + 1) % n];
+    const vx = b.x - a.x, vz = b.z - a.z;
+    const L = vx * vx + vz * vz;
+    let t = L > 0 ? ((px - a.x) * vx + (pz - a.z) * vz) / L : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const dx = px - (a.x + vx * t), dz = pz - (a.z + vz * t);
+    const d = dx * dx + dz * dz;
+    if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
+
+/**
+ * PLATAFORMAS DE APOYO.
+ *
+ * Un edificio no se apoya en la pendiente: se apoya en una plataforma
+ * nivelada. Si el terreno sigue cayendo bajo su huella, cada parte emerge a
+ * una cota distinta y el conjunto se ve inclinado, con unas piezas mas largas
+ * que otras -- las 24 columnas de la Galeria de Honor rematan TODAS a 47,35 m
+ * pero nacian entre 28,51 y 30,21 m, asi que se veian de largos distintos.
+ * Compartir el datum alinea los remates; nivelar el suelo alinea los arranques.
+ *
+ * Se lleva el terreno a la cota de apoyo del grupo dentro de cada huella, con
+ * una transicion de `margin` metros alrededor para que no quede un escalon.
+ * Solo nivelan las huellas que TOCAN el suelo: un voladizo o un techo elevado
+ * no tiene por que aplanar lo que pasa por debajo.
+ */
+function applyBuildingPads(footprints, margin = CFG.padMargin) {
+  if (!terrainMesh || !TG.ready || !(margin > 0)) return 0;
+  const pos = terrainMesh.geometry.attributes.position;
+  const W = TG.nx + 1;
+  const target = new Float32Array(terrainBaseY.length);
+  const weight = new Float32Array(terrainBaseY.length);
+  const near   = new Float32Array(terrainBaseY.length).fill(Infinity);
+
+  // La grilla del terreno tiene celdas de varios metros y una columna mide
+  // 1x1 m: no hay un solo vertice DENTRO de su anillo. Para que la cota
+  // interpolada bajo la huella llegue de verdad al datum, la meseta se extiende
+  // una celda entera mas alla del borde -- asi las cuatro esquinas de cualquier
+  // celda que toque la huella quedan niveladas.
+  const core = Math.hypot(TG.dx, TG.dz);
+
+  for (const f of footprints) {
+    // Nivela la huella de cualquier miembro de un grupo que pise el suelo,
+    // incluida la de un techo elevado: la columnata de la Galeria son 24
+    // columnas de 1x1 m, y solo con ellas la plataforma quedaba tan pobre que
+    // la transicion del edificio vecino se la comia.  Un voladizo suelto, que
+    // no pertenece a ningun grupo apoyado, sigue sin aplanar nada.
+    if (!f.ground || !f.ground.solid) continue;
+    const datum = f.ground.datum;
+
+    let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+    for (const p of f.outer) {
+      if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x;
+      if (p.z < mnz) mnz = p.z; if (p.z > mxz) mxz = p.z;
+    }
+    const reach = core + margin;
+    const i0 = Math.max(0, Math.floor((mnx - reach - TG.x0) / TG.dx));
+    const i1 = Math.min(TG.nx, Math.ceil((mxx + reach - TG.x0) / TG.dx));
+    const j0 = Math.max(0, Math.floor((mnz - reach - TG.z0) / TG.dz));
+    const j1 = Math.min(TG.nz, Math.ceil((mxz + reach - TG.z0) / TG.dz));
+
+    for (let j = j0; j <= j1; j++) {
+      const z = TG.z0 + j * TG.dz;
+      for (let i = i0; i <= i1; i++) {
+        const x = TG.x0 + i * TG.dx;
+        let w = 1, d = -1;                 // d < 0 => el vertice cae DENTRO
+        if (!pointInRing(x, z, f.outer)) {
+          d = ringDistance(x, z, f.outer);
+          if (d >= reach) continue;
+          w = d <= core ? 1 : 1 - (d - core) / margin;
+        }
+        const k = j * W + i;
+        // Donde se pisan dos plataformas gana la MAS CERCANA, no la mas alta:
+        // el suelo que un edificio tiene debajo le pertenece a el, aunque el
+        // vecino este mas arriba y su transicion llegue hasta aca.
+        if (w > weight[k] || (w === weight[k] && d < near[k])) {
+          weight[k] = w; near[k] = d; target[k] = datum;
+        }
+      }
+    }
+  }
+
+  let n = 0;
+  for (let k = 0; k < terrainBaseY.length; k++) {
+    const w0 = weight[k];
+    if (w0 <= 0) continue;
+    const w = w0 * w0 * (3 - 2 * w0);                  // smoothstep
+    const h = terrainBaseY[k] * (1 - w) + target[k] * w;
+    if (h !== terrainBaseY[k]) { terrainBaseY[k] = h; pos.setY(k, h); n++; }
+  }
+  if (n) { pos.needsUpdate = true; terrainMesh.geometry.computeVertexNormals(); }
+  return n;
+}
+
+/**
+ * ZOCALOS DE GRUPO.
+ *
+ * Un volumen a ras de suelo ya se prolonga solo hacia abajo, asi que tapa su
+ * propio hueco. Lo que queda descubierto es el suelo ENTRE las piezas de un
+ * mismo edificio: entre las 24 columnas de la Galeria de Honor el terreno
+ * seguia cayendo 2,3 m y cada columna se veia de un largo distinto.
+ *
+ * Ese hueco lo rellena la huella de las piezas ELEVADAS del grupo, que a ras
+ * de suelo no aportan nada: el contorno del techo de la Galeria mide 604 m2
+ * contra los 34 m2 que suman las columnas, de modo que extruirlo desde bajo el
+ * terreno hasta la cota de apoyo da exactamente la plataforma del monumento.
+ * El terreno no se toca.
+ */
+function buildPlinths(footprints) {
+  if (!CFG.plinths) return 0;
+  let n = 0;
+  for (const f of footprints) {
+    const g = f.ground;
+    if (!g || !g.solid) continue;                  // el grupo no pisa el suelo
+    if (heightOf(f.tags).bottom <= 0.01) continue; // ya baja por si mismo
+    if (f.outer.length < 3) continue;
+
+    const geo = new THREE.ExtrudeGeometry(shapeFromRings(f.outer, f.holes), {
+      depth: g.skirt, bevelEnabled: false, curveSegments: 2, steps: 1
+    });
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geo, materialFor(f.kind, 0, f.tags));
+    mesh.position.y     = g.datum - g.skirt;       // el tope queda en el apoyo
+    mesh.castShadow     = true;
+    mesh.receiveShadow  = true;
+    mesh.userData = { baseY: g.datum - g.skirt, baseGround: g.datum,
+                      kind: 'plinth', name: (f.tags.name || '') + ' (zocalo)' };
+    gBuild.add(mesh);
+    n++;
+  }
+  return n;
+}
+
+/**
+ * Construye un bloque extruido apoyado en el terreno.
+ *  - la base se apoya en `ground.datum`, compartido con el resto del edificio
+ *  - los volumenes que arrancan del suelo prolongan un zocalo hacia abajo para
+ *    no quedar flotando del lado bajo de la pendiente
+ */
+function extrudeFootprint(outer, holes, tags, kind, ground) {
   if (outer.length < 3) return null;
   const { top, bottom } = heightOf(tags);
-  const g = groundRange(outer);
-  const bury = (g.hi - g.lo) + 0.6;              // hundido bajo la cota minima
-  const depth = (top - bottom) + bury;
+  const g = ground ?? soloGround(outer);
+  // El zocalo es SOLO para lo que nace del suelo. Una parte elevada (un techo
+  // con min_height, un voladizo, un puente) no tiene terreno donde esconderlo:
+  // se le colaba hacia abajo y atravesaba lo que tuviera debajo -- el techo de
+  // la Galeria de Honor bajaba 3,6 m de mas y se metia entre las columnas.
+  const bury = bottom <= 0.01 ? g.skirt : 0;
+
+  // Si hay un techo con forma, se descuenta su altura del cuerpo prismatico:
+  // asi la cota total del volumen sigue siendo exactamente tags.height.
+  const shape = roofShapeOf(tags);
+  // El cuerpo llega hasta (top - roofH), pero nunca por debajo de bottom + 0.5;
+  // effRoofH es lo que realmente le queda al techo despues de ese tope.
+  const bodyTop  = Math.max(bottom + 0.5, top - roofHeightOf(tags));
+  const effRoofH = top - bodyTop;
+  const depth    = (bodyTop - bottom) + bury;
 
   const geo = new THREE.ExtrudeGeometry(shapeFromRings(outer, holes), {
     depth, bevelEnabled: false, curveSegments: 2, steps: 1
@@ -1015,15 +1875,40 @@ function extrudeFootprint(outer, holes, tags, kind) {
   // Asi el espesor pasa a +Y y shape.y vuelve a ser -mundo.z.
   geo.rotateX(-Math.PI / 2);
 
-  const mesh = new THREE.Mesh(geo, materialFor(kind, top, tags));
-  mesh.position.y = g.lo + bottom - bury;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.userData = {
-    baseY: mesh.position.y, baseGround: g.lo,
+  const group = new THREE.Group();
+  group.userData = {
+    baseY: g.datum + bottom - bury, baseGround: g.datum,
     kind, top, bottom, name: tags.name || tags['building:part'] || tags.building || kind
   };
-  return mesh;
+
+  const bodyMesh = new THREE.Mesh(geo, materialFor(kind, top, tags));
+  bodyMesh.position.y = g.datum + bottom - bury;
+  bodyMesh.castShadow   = true;
+  bodyMesh.receiveShadow = true;
+  bodyMesh.userData = group.userData;
+  group.add(bodyMesh);
+
+  // Techo procedural 3D. La geometria se genera con la Y RELATIVA al datum
+  // (baseY = bodyTop) y el mesh se posiciona en g.datum: asi comparte
+  // baseGround con el cuerpo y applyExaggeration los mueve juntos.
+  if (shape && effRoofH > 0.05) {
+    const roofResult = buildRoofGeo(outer, bodyTop, effRoofH, tags);
+    if (roofResult) {
+      const roofMesh = new THREE.Mesh(roofResult.geo, roofResult.mat);
+      roofMesh.position.y    = g.datum;
+      roofMesh.castShadow    = true;
+      roofMesh.receiveShadow = true;
+      roofMesh.userData = {
+        baseY: g.datum, baseGround: g.datum, kind: kind + ':roof',
+        roofShape: shape, name: group.userData.name
+      };
+      group.add(roofMesh);
+      group.userData.roofShape = shape;
+      ROOF_STATS[shape] = (ROOF_STATS[shape] || 0) + 1;
+    }
+  }
+
+  return group;
 }
 
 /* ------------- 9bis. CAPAS DE SUPERFICIE: parques, agua, calles ----------- */
@@ -1040,55 +1925,61 @@ function extrudeFootprint(outer, holes, tags, kind) {
  * se aparta de la superficie real, y si ese apartamiento supera el desfasaje
  * del solado, el terreno asoma por encima y el mapa se ve roto.
  *
- * Medido sobre el campo de terrazas: con lado 12 m el error llega a 0,92 m al
- * 30 % de terrazas, contra los 0,18 m que levanta la calzada. Con lado 3 m baja
- * a 0,155 m. Sin terrazas el error era 0,003 m, por eso antes no se notaba.
- *
- * terraceLift: el error crece con la deformacion, asi que el solado se levanta
- * en proporcion a las terrazas. En 0 no suma nada.
+ * Sobre terreno suave el error es de milimetros y el lado no importa; sobre
+ * terreno deformado llega a superar el espesor del solado. Se midio que con
+ * lado 12 m el error trepaba a 0,92 m y con lado 3 m baja a 0,155 m, asi que
+ * quedo en 3 m aunque hoy el terreno no se deforme.
  */
 const smoothstep01 = t => {
   const u = t < 0 ? 0 : t > 1 ? 1 : t;
   return u * u * (3 - 2 * u);
 };
-
-let roadCut = 0.1;   // recorte permitido bajo el terreno, ver buildSurfaces()
 const SURF = {
-  maxEdge: 3, densify: 3, terraceLift: 0.50,
-  // Rasante de las calzadas. Una calle no es una tela drapeada: se construye.
-  // roadSmooth = largo de la media movil sobre el perfil longitudinal (m).
-  // roadCut    = cuanto se permite cortar por debajo del terreno para
-  //              rebajar un lomo, en vez de treparlo.
-  roadSmooth: 24, roadCutFrac: 0.6,
-  // gradeHold: franja a plena intensidad MAS ALLA del borde de la calzada. La
-  //   malla tiene un vertice cada 2,5 m: si el nivelado pleno termina justo en
-  //   el borde, el vertice de afuera queda a medio nivelar y al interpolar la
-  //   calzada vuelve a flotar.
-  // gradePasses: se nivela, se recalculan las rasantes sobre el terreno ya
-  //   nivelado y se vuelve a nivelar. En los cruces, dos calles con rasantes
-  //   distintas promedian; la segunda pasada las concilia.
-  gradeFeather: 3.0, gradeHold: 3.0, gradePasses: 3
+  maxEdge: 3, densify: 3,
+  // Rasante de las calzadas. La seccion transversal se emite horizontal -- eso
+  // es lo que evita que la calle se vea alabeada -- pero el perfil longitudinal
+  // sigue el terreno sin promediar.
+  //
+  // roadSmooth > 0 aplica una media movil al perfil. Suena bien y se ve mal:
+  // cada via promedia sobre SUS vecinos, asi que en un nodo compartido las dos
+  // llegan con cotas distintas y la junta queda escalonada. Medido sobre las
+  // 150 juntas del bbox: con 24 m el 61 % tenia un escalon de mas de 5 cm, con
+  // media de 6,9 cm; en 0 el desajuste cae a 1,3 cm y ninguna junta escalona.
+  //
+  // Si en algun momento el terreno vuelve a deformarse y hace falta suavizar,
+  // la via correcta no es promediar por tramo sino resolver una cota unica por
+  // nodo compartido para toda la red.
+  roadSmooth: 0, roadCut: 0.10
 };
-let surfLift = 0;   // se recalcula en cada buildSurfaces()
 
 /** Clasifica un poligono. Devuelve null si el visor no lo sabe dibujar. */
 function classifyArea(t) {
   if (t.building || t['building:part']) return null;        // ya son volumenes
-  if (t.natural === 'water' || t.waterway === 'riverbank' || t.landuse === 'reservoir')
-    return { id: 'agua',      color: 0x2e6d97, off: 0.05, rough: 0.2, metal: 0.15 };
+  if (t.natural === 'water' || t.waterway === 'riverbank' || t.landuse === 'reservoir' ||
+      t.amenity === 'fountain' || t.man_made === 'water_basin') {
+    // Solo los recipientes construidos se cavan. Un rio o una laguna no: su
+    // borde es la costa, no un brocal, y ahi el drapeado es lo correcto.
+    const cuenco = t.amenity === 'fountain' || t.man_made === 'water_basin' ||
+                   ['reflecting_pool', 'basin', 'pond', 'fountain']
+                     .includes(t.water ?? '');
+    return { id: 'agua', color: 0x2b6c99, off: 0.05, rough: 0.18, metal: 0.15,
+             cuenco };
+  }
   if (t.natural === 'wood' || t.landuse === 'forest')
-    return { id: 'arboleda',  color: 0x3f6b36, off: 0.18 };
+    return { id: 'arboleda',  color: 0x3d6632, off: 0.18 };
   if (t.leisure === 'park' || t.leisure === 'garden' || t.landuse === 'grass' ||
       t.landuse === 'recreation_ground' || t.leisure === 'pitch')
-    return { id: 'verde',     color: 0x62914a, off: 0.12 };
+    return { id: 'verde',     color: 0x6ea344, off: 0.12 };
   if (t.leisure === 'sports_centre' || t.leisure === 'swimming_pool' || t.leisure === 'playground')
-    return { id: 'deportivo', color: 0x6f8f6a, off: 0.14 };
+    return { id: 'deportivo', color: 0x5b8a54, off: 0.14 };
   if (t.amenity === 'parking')
-    return { id: 'playa',     color: 0x7b7a75, off: 0.10 };
+    return { id: 'playa',     color: 0x484b52, off: 0.14 };
   if (t.man_made === 'pier')
-    return { id: 'muelle',    color: 0x9c8461, off: 0.36 };
+    return { id: 'muelle',    color: 0xa89474, off: 0.36 };
+  if (t.historic === 'memorial' || t.amenity === 'fountain')
+    return { id: 'plaza_monumento', color: 0xdcd7cc, off: 0.16 };
   if (t.highway === 'pedestrian' || t['area:highway'] || t.place === 'square')
-    return { id: 'peatonal',  color: 0xc4bcae, off: 0.15 };
+    return { id: 'peatonal',  color: 0xe2ded4, off: 0.16 };
   if (t.amenity === 'school' || t.amenity === 'hospital' ||
       ['military', 'brownfield', 'construction', 'industrial', 'religious'].includes(t.landuse))
     return { id: 'predio',    color: 0x8d8b85, off: 0.06 };
@@ -1100,44 +1991,67 @@ function classifyArea(t) {
 /**
  * Clasifica una linea de la red de circulacion.
  *
- * Cada via se dibuja DOS veces, como en los renders de f4map / cartografia
- * clasica: primero un "casing" (borde) mas ancho y oscuro, apenas mas abajo, y
- * encima el relleno. La franja oscura que asoma a los costados es lo que le da
- * el borde nitido y separa visualmente calzada de vereda.
+ * Estilo F4maps:
+ *  - Calzadas en asfalto oscuro (#3c3f46) con bordes continuos y lineas discontinuas centrales.
+ *  - Veredas elevadas sutilmente (#dcd8cf) que acompañan sin tapar el asfalto.
+ *  - Cruces peatonales dibujados como pasos de cebra sobre la calzada (sin casing que corte).
+ *  - Escaleras rectilíneas (sin discos circulares).
  */
 function classifyLine(t) {
   if (!t.highway) return null;
   const tagged = parseLength(t.width);
-  const R = (id, width, color, off, casing, grow) => ({
+  /**
+   * Jerarquía F4maps:
+   * La calzada (asfalto) es la superficie principal de circulacion y va POR ENCIMA
+   * de los senderos y veredas (off: 0.230 vs 0.175). Asi, cuando un caminito blanco
+   * cruza o toca la calle, la calle lo tapa a el, y no al reves.
+   */
+  const CASING = {
+    vereda:   0.155,
+    bici:     0.160,
+    peaton_l: 0.165,
+    calzada:  0.200,
+    escalera: 0.210
+  };
+  const R = (id, width, color, off, casing, grow, opts = {}) => ({
     id, color, off,
-    width: Number.isFinite(tagged) && tagged > 0 ? clamp(tagged, 1, 40) : width,
-    casing: { color: casing, grow }
+    width: Number.isFinite(tagged) && tagged > 0 ? clamp(tagged, 1, 45) : width,
+    casing: casing ? { color: casing, grow, off: CASING[id] || 0.155 } : null,
+    ...opts
   });
+
   switch (t.highway) {
-    case 'motorway': case 'trunk': case 'primary': return R('calzada',  12, 0xc6bfb0, 0.18, 0x6f6a60, 1.6);
-    case 'secondary':                              return R('calzada',  10, 0xbdb5a6, 0.18, 0x6f6a60, 1.4);
-    case 'tertiary':                               return R('calzada',   8, 0xbdb5a6, 0.18, 0x6f6a60, 1.2);
-    case 'residential': case 'living_street':      return R('calzada',   7, 0xb4ada0, 0.18, 0x767065, 1.1);
-    case 'service':                                return R('calzada',   4, 0xada699, 0.18, 0x7b7569, 0.8);
-    case 'pedestrian':                             return R('peaton_l',  6, 0xc4bcae, 0.21, 0x8a8375, 0.8);
-    case 'cycleway':                               return R('bici',      2, 0x9a7f6a, 0.23, 0x6a5445, 0.5);
-    // Las escaleras no se modelan en 3D: se dibujan como una senda mas, con
-    // marcas transversales muy leves que insinuan los escalones. La cantidad
-    // sale de step_count cuando OSM lo trae; si no, de una huella tipica.
+    case 'motorway': case 'trunk': case 'primary':
+      return R('calzada',  12, 0x3c3f46, 0.230, 0x222428, 0.8, { markings: true });
+    case 'secondary':
+      return R('calzada',  10, 0x40434a, 0.230, 0x24262a, 0.7, { markings: true });
+    case 'tertiary':
+      return R('calzada',   8, 0x44474e, 0.230, 0x26282c, 0.6, { markings: true });
+    case 'residential': case 'living_street':
+      return R('calzada',   7, 0x484b52, 0.230, 0x292b2f, 0.5, { markings: false });
+    case 'service':
+      return R('calzada',   4.5, 0x4c4f56, 0.230, 0x2c2e33, 0.4, { markings: false });
+    case 'pedestrian':
+      return R('peaton_l',  6, 0xdcd8cf, 0.185, 0x7c786e, 0.5);
+    case 'cycleway':
+      return R('bici',      2.2, 0x874e3d, 0.180, 0x543026, 0.4);
     case 'steps': {
-      const st = R('escalera', 1.8, 0xc2a98a, 0.28, 0x7d6b52, 0.5);
+      const w = Number.isFinite(tagged) && tagged > 0 ? clamp(tagged, 1, 45) : 2.5;
+      const st = R('escalera', w, 0xe6e1d5, 0.240, 0x9e9587, 0.4, { isStairs: true });
       const sc = parseInt(t['step_count'], 10);
       st.nosing = {
         count: Number.isFinite(sc) && sc > 1 ? sc : 0,
-        // incline dice hacia donde sube RESPECTO DEL ORDEN DE NODOS del way
         down: t['incline'] === 'down'
       };
       return st;
     }
     case 'footway': case 'path': case 'corridor':
-      // la vereda va por encima de la calzada, como en la realidad
-      return t.footway === 'crossing' ? R('senda',  2.6, 0xe2dccd, 0.22, 0x9a9384, 0.5)
-                                      : R('vereda', 2.0, 0xd6cfc0, 0.26, 0x948d7e, 0.55);
+      if (t.footway === 'crossing') {
+        // Cruce peatonal estilo cebra sobre el asfalto (off superior a la calzada para pintar la cebra)
+        return R('cruce_cebra', 2.8, 0xfafafa, 0.238, null, 0, { isCrossing: true });
+      }
+      // Caminos y veredas por debajo de la calzada: la calle los tapa al cruzarse
+      return R('vereda', 2.0, 0xdcd8cf, 0.175, 0x7c786e, 0.35);
   }
   return null;
 }
@@ -1145,6 +2059,125 @@ function classifyLine(t) {
 const tess = new TessellateModifier(SURF.maxEdge, 10);
 
 /** Poligono drapeado sobre el terreno, teselado para seguir el relieve. */
+/**
+ * Anillo desplazado `d` metros hacia ADENTRO, por bisectriz en cada vertice.
+ * Exacto en poligonos convexos; los espejos del monumento son rectangulos de
+ * 4 vertices. Devuelve null si el resultado se degenera o se da vuelta.
+ */
+function insetRing(ring, d) {
+  const n = ring.length;
+  if (n < 3 || !(d > 0)) return null;
+  const hacia = giro => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const p = ring[(i + n - 1) % n], c = ring[i], q = ring[(i + 1) % n];
+      const e1x = c.x - p.x, e1z = c.z - p.z, l1 = Math.hypot(e1x, e1z);
+      const e2x = q.x - c.x, e2z = q.z - c.z, l2 = Math.hypot(e2x, e2z);
+      if (l1 < 1e-9 || l2 < 1e-9) continue;
+      const n1x = giro * e1z / l1, n1z = -giro * e1x / l1;
+      const n2x = giro * e2z / l2, n2z = -giro * e2x / l2;
+      let bx = n1x + n2x, bz = n1z + n2z;
+      const bl = Math.hypot(bx, bz);
+      if (bl < 1e-6) continue;
+      bx /= bl; bz /= bl;
+      // en un vertice muy agudo la bisectriz se dispara: se acota
+      const cos = Math.max(0.25, n1x * bx + n1z * bz);
+      out.push({ x: c.x + bx * d / cos, z: c.z + bz * d / cos });
+    }
+    return out.length >= 3 ? out : null;
+  };
+  const a0 = Math.abs(signedArea(ring));
+  for (const giro of [1, -1]) {
+    const r = hacia(giro);
+    if (!r) continue;
+    const a1 = Math.abs(signedArea(r));
+    // hacia adentro encoge, y no tanto como para desaparecer
+    if (a1 < a0 * 0.97 && a1 > a0 * 0.15 &&
+        Math.sign(signedArea(r)) === Math.sign(signedArea(ring))) return r;
+  }
+  return null;
+}
+
+/**
+ * CUENCOS DE AGUA.
+ *
+ * El agua es horizontal, asi que el brocal se fija en la cota MAXIMA del
+ * solado bajo el contorno: de lo contrario el espejo quedaria inclinado. En la
+ * barranca eso hace que del lado bajo asome un muro -- medido, entre 1,8 y
+ * 2,6 m en los espejos del monumento -- que es exactamente lo que tiene el
+ * parque real, donde los espejos bajan en terrazas.
+ *
+ * Tres piezas: losa de fondo (solida, hasta bien por debajo del terreno para
+ * que no flote), brocal anular con espesor real, y la lamina de agua.
+ */
+function buildWaterBasins(areaJobs) {
+  if (!CFG.basins) return 0;
+  const matObra = new THREE.MeshStandardMaterial({
+    color: 0xcfcabd, roughness: 0.88, metalness: 0.02, side: THREE.DoubleSide
+  });
+  const matAgua = new THREE.MeshStandardMaterial({
+    color: 0x2b6c99, roughness: 0.12, metalness: 0.25, side: THREE.DoubleSide
+  });
+  let n = 0;
+  for (const job of areaJobs) {
+    if (!job.st.cuenco || job.outer.length < 3) continue;
+    if (Math.abs(signedArea(job.outer)) > CFG.basinMaxArea) continue;
+
+    // cota del solado bajo el contorno, densificando las aristas: el maximo
+    // manda (brocal horizontal) y el minimo dice cuanto hay que bajar la losa
+    let alto = -Infinity, bajo = Infinity;
+    for (let i = 0; i < job.outer.length; i++) {
+      const a = job.outer[i], b = job.outer[(i + 1) % job.outer.length];
+      const pasos = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z)));
+      for (let u = 0; u <= pasos; u++) {
+        const h = pavementY(a.x + (b.x - a.x) * u / pasos,
+                            a.z + (b.z - a.z) * u / pasos);
+        if (h > alto) alto = h;
+        if (h < bajo) bajo = h;
+      }
+    }
+    if (!Number.isFinite(alto)) continue;
+
+    const brocal = alto + 0.12;                    // apenas sobre el solado
+    const fondo  = brocal - CFG.basinDepth;
+    const dentro = insetRing(job.outer, CFG.basinCoping);
+    if (!dentro) continue;                         // huella impropia: se drapea
+
+    // 1. losa de fondo, prolongada hasta debajo del terreno mas bajo
+    const hundir = Math.max(0.6, brocal - bajo + 0.6);
+    const losa = new THREE.ExtrudeGeometry(shapeFromRings(job.outer, []), {
+      depth: hundir, bevelEnabled: false, curveSegments: 2, steps: 1
+    });
+    losa.rotateX(-Math.PI / 2);
+    const mLosa = new THREE.Mesh(losa, matObra);
+    mLosa.position.y = fondo - hundir;
+    mLosa.receiveShadow = true;
+    gSurf.add(mLosa);
+
+    // 2. brocal: anillo con espesor, del fondo al borde
+    const aro = new THREE.ExtrudeGeometry(shapeFromRings(job.outer, [dentro]), {
+      depth: CFG.basinDepth, bevelEnabled: false, curveSegments: 2, steps: 1
+    });
+    aro.rotateX(-Math.PI / 2);
+    const mAro = new THREE.Mesh(aro, matObra);
+    mAro.position.y = fondo;
+    mAro.castShadow = true; mAro.receiveShadow = true;
+    gSurf.add(mAro);
+
+    // 3. lamina de agua, por dentro del brocal
+    const agua = new THREE.ShapeGeometry(shapeFromRings(dentro, []));
+    agua.rotateX(-Math.PI / 2);
+    agua.deleteAttribute('uv');
+    const mAgua = new THREE.Mesh(agua, matAgua);
+    mAgua.position.y = brocal - CFG.basinWaterDrop;
+    gSurf.add(mAgua);
+
+    job.cavado = true;      // ya no se drapea: la lamina la dibuja el cuenco
+    n++;
+  }
+  return n;
+}
+
 function drapedArea(outer, holes, off) {
   if (outer.length < 3) return null;
   let geo;
@@ -1159,7 +2192,7 @@ function drapedArea(outer, holes, off) {
   geo.deleteAttribute('uv');
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++)
-    pos.setY(i, pavementY(pos.getX(i), pos.getZ(i)) + off + surfLift);
+    pos.setY(i, pavementY(pos.getX(i), pos.getZ(i)) + off);
   geo.computeVertexNormals();
   return geo;
 }
@@ -1167,7 +2200,7 @@ function drapedArea(outer, holes, off) {
 /** Cinta de ancho constante a lo largo de una polilinea, drapeada. */
 /**
  * Rasante de una via: densifica la traza, calcula la cota de cada seccion y la
- * suaviza. Lo usan la cinta y su talud, para que coincidan exactamente.
+ * suaviza. Lo usa la cinta de la calzada.
  */
 function roadProfile(pts, width) {
   const dense = [pts[0]];
@@ -1182,6 +2215,7 @@ function roadProfile(pts, width) {
 
   const hw = width / 2, n = dense.length;
   const dirX = new Float32Array(n), dirZ = new Float32Array(n);
+  const miter = new Float32Array(n);      // correccion de ancho en las curvas
   const crudo = new Float32Array(n);
 
   // --- 1. perfil crudo: cota del EJE ---------------------------------------
@@ -1195,106 +2229,172 @@ function roadProfile(pts, width) {
     let dx = b.x - a.x, dz = b.z - a.z;
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
     dirX[i] = dx; dirZ[i] = dz;
+
+    // Sin mitre. Ensanchar la seccion en los vertices con 1/cos(t/2) corrige
+    // el angostamiento, pero en una via ancha revienta: la Escalinata Civica
+    // mide 40 m y con factor 2 la cinta se inflaba a 80 m, que es el abanico
+    // que aparecia en el monumento. El disco de union cubre la esquina sin
+    // deformar la seccion, asi que el mitre no hace falta.
+    miter[i] = 1;
     crudo[i] = pavementY(dense[i].x, dense[i].z);
   }
 
-  // --- 2. rasante: media movil sobre el perfil ------------------------------
-  // Una calle tiene pendiente pareja; no copia cada bache del terreno. El
-  // recorte limita cuanto puede hundirse respecto del terreno real.
-  const win = Math.max(1, Math.round(SURF.roadSmooth / SURF.densify));
-  const perfil = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    let sum = 0, c = 0;
-    for (let k = -win; k <= win; k++) {
-      const j = i + k;
-      if (j < 0 || j >= n) continue;
-      sum += crudo[j]; c++;
+  // --- 2. rasante ----------------------------------------------------------
+  // Sin suavizar, el perfil ES la cota del terreno en el eje. Dos vias que
+  // comparten un nodo lo muestrean en el mismo punto, asi que coinciden exacto
+  // y la junta cierra. Con roadSmooth > 0 se aplica la media movil.
+  let perfil = crudo;
+  if (SURF.roadSmooth > 0) {
+    const win = Math.max(1, Math.round(SURF.roadSmooth / SURF.densify));
+    perfil = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = 0, c = 0;
+      for (let k = -win; k <= win; k++) {
+        const j = i + k;
+        if (j < 0 || j >= n) continue;
+        sum += crudo[j]; c++;
+      }
+      perfil[i] = Math.max(sum / c, crudo[i] - SURF.roadCut);
     }
-    perfil[i] = Math.max(sum / c, crudo[i] - roadCut);
   }
 
-  return { dense, dirX, dirZ, perfil, n, hw };
+  return { dense, dirX, dirZ, miter, perfil, n, hw };
 }
 
-/** Cinta de calzada: seccion transversal horizontal, rasante suavizada. */
+/**
+ * Cinta de calzada o vereda adaptada al relieve real.
+ * Se divide en dos semi-franjas (izquierda a centro, centro a derecha) para
+ * que el perfil transversal no quede plano en pendientes laterales, evitando que
+ * el terreno devore la mitad alta de la calzada o vereda.
+ */
 function ribbonArea(pts, width, off) {
   const pr = roadProfile(pts, width);
   if (!pr) return null;
-  const { dense, dirX, dirZ, perfil, n, hw } = pr;
+  const { dense, dirX, dirZ, miter, perfil, n, hw } = pr;
 
-  // Cada seccion se emite con la MISMA cota a ambos lados: es lo que endereza
-  // la calle, en vez de alabearse siguiendo el terreno de cada borde.
-  const L = [], R = [];
+  const L = [], C = [], R = [];
   for (let i = 0; i < n; i++) {
-    const q = dense[i], dx = dirX[i], dz = dirZ[i];
-    // Sin surfLift: el terreno ya fue nivelado a esta misma rasante, asi que
-    // la calzada se apoya directamente. El desfasaje extra solo lo necesitan
-    // las areas, que siguen el relieve sin nivelar.
-    const y = perfil[i] + off;
-    L.push(q.x - dz * hw, y, q.z + dx * hw);
-    R.push(q.x + dz * hw, y, q.z - dx * hw);
+    const q = dense[i], dx = dirX[i], dz = dirZ[i], m = hw * miter[i];
+    const lx = q.x - dz * m, lz = q.z + dx * m;
+    const rx = q.x + dz * m, rz = q.z - dx * m;
+    const cx = q.x, cz = q.z;
+
+    const ly = pavementY(lx, lz) + off;
+    const cy = pavementY(cx, cz) + off;
+    const ry = pavementY(rx, rz) + off;
+
+    L.push(lx, ly, lz);
+    C.push(cx, cy, cz);
+    R.push(rx, ry, rz);
   }
 
   const v = [];
   for (let i = 0; i < dense.length - 1; i++) {
     const a = i * 3, b = (i + 1) * 3;
-    v.push(L[a], L[a+1], L[a+2], R[b], R[b+1], R[b+2], R[a], R[a+1], R[a+2]);
-    v.push(L[a], L[a+1], L[a+2], L[b], L[b+1], L[b+2], R[b], R[b+1], R[b+2]);
+    // Sub-franja izquierda: L a C
+    v.push(L[a], L[a+1], L[a+2], C[b], C[b+1], C[b+2], C[a], C[a+1], C[a+2]);
+    v.push(L[a], L[a+1], L[a+2], L[b], L[b+1], L[b+2], C[b], C[b+1], C[b+2]);
+    // Sub-franja derecha: C a R
+    v.push(C[a], C[a+1], C[a+2], R[b], R[b+1], R[b+2], R[a], R[a+1], R[a+2]);
+    v.push(C[a], C[a+1], C[a+2], C[b], C[b+1], C[b+2], R[b], R[b+1], R[b+2]);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
   const nrm = new Float32Array(v.length);
-  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;   // drapeado: normal hacia arriba
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
   geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   return geo;
 }
 
 /**
- * Marcas transversales sobre una senda de escalera: una banda fina por escalon,
- * perpendicular al avance, drapeada sobre el terreno como el resto del solado.
- *
- * Es puramente decorativa. No modifica el heightmap ni necesita anclaje: se
- * apoya en terrainSurfaceY() igual que la vereda que tiene debajo.
- *
- * @param count  escalones declarados por OSM; 0 = estimar por huella tipica
+ * Discos en los vertices de las vias (solo calzadas y veredas, NUNCA escaleras).
+ * Los vertices del perimetro muestrean la cota real del terreno en cada posicion
+ * para que el disco se curve con la pendiente en vez de clavarse en el terreno.
  */
-function nosingArea(pts, width, off, count, depth = 0.14) {
-  const acc = [0];
-  for (let i = 1; i < pts.length; i++)
-    acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
-  const total = acc[acc.length - 1];
-  if (total <= 0) return null;
-
-  // Huella acotada: por debajo de ~0,35 m las marcas se empastan en una mancha
-  // y por encima de ~2,5 m dejan de leerse como escalones.
-  const spacing = clamp(count > 1 ? total / count : 0.45, 0.35, 2.5);
-  const n = Math.floor(total / spacing);
-  if (n < 1) return null;
-
-  const hw = width / 2, hd = depth / 2, v = [];
-  for (let k = 1; k <= n; k++) {
-    const sk = k * spacing;
-    let i = 1;
-    while (i < acc.length - 1 && acc[i] < sk) i++;
-    const A = pts[i - 1], B = pts[i];
-    const seg = Math.max(1e-6, acc[i] - acc[i - 1]);
-    const t = clamp((sk - acc[i - 1]) / seg, 0, 1);
-    const dx = (B.x - A.x) / seg, dz = (B.z - A.z) / seg;
-    const cx = A.x + (B.x - A.x) * t, cz = A.z + (B.z - A.z) * t;
-
-    // Cota unica tomada en el eje: la marca queda horizontal, como el peldanio
-    // que representa, en vez de alabearse con el terreno de cada esquina.
-    const y = pavementY(cx, cz) + off;
-    const P = (lado, lon) => [
-      cx + lado * (-dz) * hw + lon * dx * hd, y,
-      cz + lado * ( dx) * hw + lon * dz * hd
-    ];
-    const La = P(1, -1), Lb = P(1, 1), Ra = P(-1, -1), Rb = P(-1, 1);
-    // mismo bobinado que ribbonArea, verificado con normal hacia +Y
-    v.push(...La, ...Rb, ...Ra);
-    v.push(...La, ...Lb, ...Rb);
+function jointDiscs(pts, width, off, lados = 0) {
+  const r = width / 2;
+  if (r <= 0 || pts.length < 1) return null;
+  if (!lados) lados = Math.max(8, Math.min(24, Math.round(r * 4)));
+  const v = [];
+  for (const q of pts) {
+    const cy = pavementY(q.x, q.z) + off;
+    for (let k = 0; k < lados; k++) {
+      const a0 = (k / lados) * Math.PI * 2, a1 = ((k + 1) / lados) * Math.PI * 2;
+      const x0 = q.x + Math.sin(a0) * r, z0 = q.z + Math.cos(a0) * r;
+      const x1 = q.x + Math.sin(a1) * r, z1 = q.z + Math.cos(a1) * r;
+      const y0 = pavementY(x0, z0) + off;
+      const y1 = pavementY(x1, z1) + off;
+      v.push(q.x, cy, q.z);
+      v.push(x0, y0, z0);
+      v.push(x1, y1, z1);
+    }
   }
   if (!v.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  const nrm = new Float32Array(v.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  return geo;
+}
+
+/**
+ * Generador de escaleras rectas arquitectonicas (como en F4maps).
+ * Sin discos circulares de union, con extremos planos (flat caps) y
+ * laterales perfectamente paralelos al eje del tramo.
+ */
+function stairwayArea(pts, width, off) {
+  if (pts.length < 2) return null;
+  const hw = width / 2;
+  const pStart = pts[0], pEnd = pts[pts.length - 1];
+  let mainDx = pEnd.x - pStart.x, mainDz = pEnd.z - pStart.z;
+  const totalLen = Math.hypot(mainDx, mainDz);
+  if (totalLen < 0.5) return null;
+  mainDx /= totalLen; mainDz /= totalLen;
+
+  const dense = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = dense[dense.length - 1], b = pts[i];
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    const k = Math.max(1, Math.ceil(d / 2.0));
+    for (let j = 1; j <= k; j++)
+      dense.push({ x: a.x + (b.x - a.x) * j / k, z: a.z + (b.z - a.z) * j / k });
+  }
+
+  const n = dense.length;
+  const subs = Math.max(2, Math.ceil(width / 4.0));
+  const stripVerts = [];
+
+  for (let i = 0; i < n; i++) {
+    const q = dense[i];
+    let dx = mainDx, dz = mainDz;
+    if (width < 6 && n > 2) {
+      const a = dense[Math.max(0, i - 1)], b = dense[Math.min(n - 1, i + 1)];
+      let sx = b.x - a.x, sz = b.z - a.z;
+      const sl = Math.hypot(sx, sz) || 1;
+      dx = sx / sl; dz = sz / sl;
+    }
+    const row = [];
+    for (let s = 0; s <= subs; s++) {
+      const t = (s / subs) * 2 - 1; // -1 a +1
+      const vx = q.x + (-dz) * (hw * t);
+      const vz = q.z + ( dx) * (hw * t);
+      const vy = pavementY(vx, vz) + off;
+      row.push(vx, vy, vz);
+    }
+    stripVerts.push(row);
+  }
+
+  const v = [];
+  for (let i = 0; i < n - 1; i++) {
+    const r0 = stripVerts[i], r1 = stripVerts[i + 1];
+    for (let s = 0; s < subs; s++) {
+      const a0 = s * 3, b0 = (s + 1) * 3;
+      const a1 = s * 3, b1 = (s + 1) * 3;
+      v.push(r0[a0], r0[a0+1], r0[a0+2],  r1[b1], r1[b1+1], r1[b1+2],  r0[b0], r0[b0+1], r0[b0+2]);
+      v.push(r0[a0], r0[a0+1], r0[a0+2],  r1[a1], r1[a1+1], r1[a1+2],  r1[b1], r1[b1+1], r1[b1+2]);
+    }
+  }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
@@ -1305,117 +2405,155 @@ function nosingArea(pts, width, off, count, depth = 0.14) {
 }
 
 /**
- * Talud de una calzada: los dos faldones verticales que bajan del borde de la
- * cinta hasta el terreno.
- *
- * Hacen falta porque la rasante esta suavizada y toma la cota alta de cada
- * seccion: sobre terreno escalonado la calle queda por encima del suelo de un
- * lado. Sin el faldon se ve una losa flotando; con el, se lee como terraplen.
+ * Peldaños rectos y paralelos sobre la escalera (F4maps style).
+ * Son bandas ortogonales al avance, sin oscilaciones angulares.
  */
-function ribbonSkirt(pts, width, off) {
-  const pr = roadProfile(pts, width);
-  if (!pr) return null;
-  const { dense, dirX, dirZ, perfil, n, hw } = pr;
+function stairNosingArea(pts, width, off, count, depth = 0.22) {
+  if (pts.length < 2) return null;
+  const pStart = pts[0], pEnd = pts[pts.length - 1];
+  let mainDx = pEnd.x - pStart.x, mainDz = pEnd.z - pStart.z;
+  const total = Math.hypot(mainDx, mainDz);
+  if (total <= 0.5) return null;
+  mainDx /= total; mainDz /= total;
 
+  const spacing = clamp(count > 1 ? total / count : 0.65, 0.35, 2.5);
+  const n = Math.floor(total / spacing);
+  if (n < 1) return null;
+
+  const hw = (width * 0.98) / 2;
+  const hd = depth / 2;
+  const subs = Math.max(2, Math.ceil(width / 4.0));
   const v = [];
-  const borde = (i, lado) => {
-    const q = dense[i], dx = dirX[i], dz = dirZ[i];
-    const x = q.x + lado * (-dz) * hw, z = q.z + lado * dx * hw;
-    const top = perfil[i] + off;
-    // el pie se hunde un poco para que no quede una linea de luz contra el suelo
-    return { x, z, top, bot: Math.min(pavementY(x, z), top) - 0.25 };
-  };
 
-  for (let lado = -1; lado <= 1; lado += 2) {
-    for (let i = 0; i < n - 1; i++) {
-      const A = borde(i, lado), B = borde(i + 1, lado);
-      // El bobinado se invierte segun el lado para que ambos faldones miren
-      // hacia afuera. Verificado con normal geometrica sobre una calle recta:
-      // con el orden opuesto los dos quedaban mirando hacia adentro y el
-      // culling de caras traseras los hacia invisibles justo desde donde se
-      // los ve.
-      if (lado > 0) {
-        v.push(A.x, A.top, A.z, B.x, B.bot, B.z, B.x, B.top, B.z);
-        v.push(A.x, A.top, A.z, A.x, A.bot, A.z, B.x, B.bot, B.z);
-      } else {
-        v.push(A.x, A.top, A.z, B.x, B.top, B.z, B.x, B.bot, B.z);
-        v.push(A.x, A.top, A.z, B.x, B.bot, B.z, A.x, A.bot, A.z);
-      }
+  for (let k = 1; k <= n; k++) {
+    const dist = (k - 0.5) * spacing;
+    const cx = pStart.x + mainDx * dist;
+    const cz = pStart.z + mainDz * dist;
+    const dx = mainDx, dz = mainDz;
+
+    for (let s = 0; s < subs; s++) {
+      const t0 = (s / subs) * 2 - 1, t1 = ((s + 1) / subs) * 2 - 1;
+      const p = (lado, lon) => {
+        const x = cx + lado * (-dz) * hw + lon * dx * hd;
+        const z = cz + lado * ( dx) * hw + lon * dz * hd;
+        const y = pavementY(x, z) + off;
+        return [x, y, z];
+      };
+      const La = p(t0, -1), Lb = p(t0, 1), Ra = p(t1, -1), Rb = p(t1, 1);
+      v.push(...La, ...Rb, ...Ra);
+      v.push(...La, ...Lb, ...Rb);
     }
   }
-  if (!v.length) return null;
 
+  if (!v.length) return null;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-  geo.computeVertexNormals();          // son caras verticales: normal real
+  const nrm = new Float32Array(v.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   return geo;
 }
 
 /**
- * Nivela el terreno bajo la red de circulacion.
- *
- * Hasta aca la calzada se dibujaba con seccion horizontal y rasante suavizada,
- * pero el terreno seguia su propio relieve: la calle terminaba flotando hasta
- * 1,2 m sobre el suelo y habia que taparlo con faldones. Lo correcto es al
- * reves -- una calle se construye nivelando el terreno, no apoyandola encima.
- *
- * Se rasteriza el perfil de cada via en un buffer del tamano de la malla,
- * acumulando cota y peso, y despues se mezcla con el terreno. Rasterizar es
- * mucho mas barato que buscar, para cada uno de los 263k vertices, cual de las
- * 223 vias tiene cerca.
+ * Señalizacion horizontal de calzadas: linea central discontinua blanca (F4maps).
  */
-function gradeRoads(lineJobs) {
-  if (!TG.ready || !terrainMesh || !lineJobs.length) return { touched: 0, max: 0, total: 1 };
-  let res = { touched: 0, max: 0, total: 1 };
-  for (let pasada = 0; pasada < SURF.gradePasses; pasada++) res = gradeRoadsOnce(lineJobs);
-  return res;
+function roadCenterMarkings(pts, off, dashLen = 3.5, gapLen = 3.5, markWidth = 0.22) {
+  if (pts.length < 2) return null;
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++)
+    acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+  const total = acc[acc.length - 1];
+  if (total < dashLen * 1.5) return null;
+
+  const hw = markWidth / 2;
+  const cycle = dashLen + gapLen;
+  const v = [];
+
+  let cur = 1.0;
+  while (cur + dashLen <= total) {
+    const s0 = cur, s1 = cur + dashLen;
+    const getPt = (dist) => {
+      let idx = 1;
+      while (idx < acc.length - 1 && acc[idx] < dist) idx++;
+      const A = pts[idx - 1], B = pts[idx];
+      const seg = Math.max(1e-6, acc[idx] - acc[idx - 1]);
+      const t = clamp((dist - acc[idx - 1]) / seg, 0, 1);
+      const dx = (B.x - A.x) / seg, dz = (B.z - A.z) / seg;
+      return { x: A.x + (B.x - A.x) * t, z: A.z + (B.z - A.z) * t, dx, dz };
+    };
+    const p0 = getPt(s0), p1 = getPt(s1);
+    const y0 = pavementY(p0.x, p0.z) + off;
+    const y1 = pavementY(p1.x, p1.z) + off;
+
+    const L0 = [p0.x - p0.dz * hw, y0, p0.z + p0.dx * hw];
+    const R0 = [p0.x + p0.dz * hw, y0, p0.z - p0.dx * hw];
+    const L1 = [p1.x - p1.dz * hw, y1, p1.z + p1.dx * hw];
+    const R1 = [p1.x + p1.dz * hw, y1, p1.z - p1.dx * hw];
+
+    v.push(...L0, ...R1, ...R0);
+    v.push(...L0, ...L1, ...R1);
+    cur += cycle;
+  }
+
+  if (!v.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  const nrm = new Float32Array(v.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  return geo;
 }
 
-function gradeRoadsOnce(lineJobs) {
-  const W = TG.nx + 1, H = TG.nz + 1;
-  const acum = new Float32Array(W * H), peso = new Float32Array(W * H);
-  const feather = SURF.gradeFeather;
+/**
+ * Cruce peatonal estilo cebra sobre el asfalto (F4maps).
+ * Franjas blancas rectangulares orientadas paralelamente al trafico.
+ */
+function zebraCrossingArea(pts, width, off) {
+  if (pts.length < 2) return null;
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++)
+    acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
+  const total = acc[acc.length - 1];
+  if (total <= 1.0) return null;
 
-  for (const l of lineJobs) {
-    if (l.pts.length < 2) continue;
-    const pr = roadProfile(l.pts, l.ls.width);
-    if (!pr) continue;
-    const { dense, perfil, n, hw } = pr;
-    const radio = hw + SURF.gradeHold + feather;
+  const barWidth = 0.40, barGap = 0.40;
+  const barLen = Math.min(3.0, Math.max(1.8, width * 0.9));
+  const cycle = barWidth + barGap;
+  const nBars = Math.floor(total / cycle);
+  if (nBars < 1) return null;
 
-    for (let i = 0; i < n; i++) {
-      const q = dense[i], y = perfil[i];
-      const i0 = Math.max(0, Math.floor((q.x - radio - TG.x0) / TG.dx));
-      const i1 = Math.min(TG.nx, Math.ceil((q.x + radio - TG.x0) / TG.dx));
-      const j0 = Math.max(0, Math.floor((q.z - radio - TG.z0) / TG.dz));
-      const j1 = Math.min(TG.nz, Math.ceil((q.z + radio - TG.z0) / TG.dz));
-      for (let j = j0; j <= j1; j++) for (let i2 = i0; i2 <= i1; i2++) {
-        const x = TG.x0 + i2 * TG.dx, z = TG.z0 + j * TG.dz;
-        const d = Math.hypot(x - q.x, z - q.z);
-        if (d > radio) continue;
-        const w = 1 - smoothstep01((d - hw - SURF.gradeHold) / feather);
-        if (w <= 0) continue;
-        const k = j * W + i2;
-        acum[k] += y * w; peso[k] += w;
-      }
-    }
+  const v = [];
+  for (let k = 0; k < nBars; k++) {
+    const dist = (k + 0.5) * cycle;
+    let idx = 1;
+    while (idx < acc.length - 1 && acc[idx] < dist) idx++;
+    const A = pts[idx - 1], B = pts[idx];
+    const seg = Math.max(1e-6, acc[idx] - acc[idx - 1]);
+    const t = clamp((dist - acc[idx - 1]) / seg, 0, 1);
+    const cx = A.x + (B.x - A.x) * t, cz = A.z + (B.z - A.z) * t;
+    const dx = (B.x - A.x) / seg, dz = (B.z - A.z) / seg;
+
+    const tx = -dz, tz = dx; // direccion vehicular
+    const px = dx, pz = dz;   // direccion del cruce
+
+    const hw = barWidth / 2, hl = barLen / 2;
+    const p = (side, lon) => {
+      const x = cx + side * px * hw + lon * tx * hl;
+      const z = cz + side * pz * hw + lon * tz * hl;
+      const y = pavementY(x, z) + off;
+      return [x, y, z];
+    };
+    const La = p(-1, -1), Lb = p(-1, 1), Ra = p(1, -1), Rb = p(1, 1);
+    v.push(...La, ...Rb, ...Ra);
+    v.push(...La, ...Lb, ...Rb);
   }
 
-  const pos = terrainMesh.geometry.attributes.position;
-  let touched = 0, max = 0;
-  for (let k = 0; k < peso.length; k++) {
-    if (peso[k] <= 1e-6) continue;
-    const objetivo = acum[k] / peso[k];
-    const w = Math.min(1, peso[k]);           // el peso tambien atenua el borde
-    const y = terrainBaseY[k] + (objetivo - terrainBaseY[k]) * w;
-    const d = Math.abs(y - terrainBaseY[k]);
-    if (d > max) max = d;
-    terrainBaseY[k] = y; pos.setY(k, y);
-    touched++;
-  }
-  pos.needsUpdate = true;
-  terrainMesh.geometry.computeVertexNormals();
-  return { touched, max, total: peso.length };
+  if (!v.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  const nrm = new Float32Array(v.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
 }
 
 /** Acumula geometrias por capa y al final funde una unica malla por capa. */
@@ -1462,11 +2600,6 @@ function pointInRing(px, pz, ring) {
   }
   return inside;
 }
-const centroid = ring => {
-  let x = 0, z = 0;
-  for (const p of ring) { x += p.x; z += p.z; }
-  return { x: x / ring.length, z: z / ring.length };
-};
 
 function processOSM(elements) {
   const stats = { bld: 0, part: 0, surf: 0, layers: 0, jobs: null,
@@ -1485,8 +2618,9 @@ function processOSM(elements) {
       if (closed) {
         const outer = ringFromGeometry(el.geometry);
         if (outer.length >= 3) {
-          if (tags['building:part']) { footprints.push({ outer, holes: [], tags, kind: 'part' }); continue; }
-          if (tags.building)         { footprints.push({ outer, holes: [], tags, kind: 'building' }); continue; }
+          const src = el.type + '/' + el.id;
+          if (tags['building:part']) { footprints.push({ outer, holes: [], tags, kind: 'part', src }); continue; }
+          if (tags.building)         { footprints.push({ outer, holes: [], tags, kind: 'building', src }); continue; }
           const st = classifyArea(tags);
           if (st) { areaJobs.push({ outer, holes: [], st }); continue; }
         }
@@ -1505,7 +2639,8 @@ function processOSM(elements) {
       const kind = tags['building:part'] ? 'part' : (tags.building ? 'building' : null);
       const rings = stitchRings(outers), holes = stitchRings(inners);
       if (kind) {
-        for (const outer of rings) footprints.push({ outer, holes, tags, kind });
+        const src = el.type + '/' + el.id;
+        for (const outer of rings) footprints.push({ outer, holes, tags, kind, src });
       } else {
         const st = classifyArea(tags);
         if (st) for (const outer of rings) areaJobs.push({ outer, holes, st });
@@ -1513,21 +2648,76 @@ function processOSM(elements) {
     }
   }
 
-  // Especificacion "Simple 3D Buildings": si un edificio tiene building:part
-  // dentro, su contorno NO se dibuja (lo sustituyen las partes).
-  const parts = footprints.filter(f => f.kind === 'part');
+  // Especificacion "Simple 3D Buildings" mejorada:
+  // Un edificio SOLO se suprime si sus building:part cubren genuinamente su
+  // superficie desde el suelo (min_height == 0) y la cobertura supera el 50%.
+  // Voladizos, antenas o partes con min_height > 0 NO suprimen el contorno.
+  const polyArea = ring => Math.abs(signedArea(ring));   // Shoelace
+
+  // Pre-filtrado: solo las partes que arrancan desde el suelo pueden tapar un
+  // contorno. Una parte con min_height > 1 es un voladizo, un alero, un puente
+  // o una antena: deja la planta baja a la vista y no suprime nada.
+  const groundParts = footprints.filter(f => {
+    if (f.kind !== 'part') return false;
+    const minH = parseLength(f.tags['min_height']);
+    if (Number.isFinite(minH) && minH > 1) return false;
+    const ml = parseFloat(f.tags['building:min_level'] ?? f.tags['min_level']);
+    if (Number.isFinite(ml) && ml >= 1) return false;
+    return true;
+  }).map(f => ({ ...f, area: polyArea(f.outer), c: ringCentroid2d(f.outer) }));
+
+  // Cobertura minima para dar por reemplazado el contorno. Medido sobre la
+  // zona, los casos se separan solos: el Concejo Municipal esta cubierto al
+  // 102% por sus partes (lo reemplazan de verdad), mientras que los dos pilones
+  // del Propileo solo al 65% y 70%. Con 0,6 se borraban los pilones enteros y
+  // la losa de la Galeria se quedaba sin apoyo en las puntas.
+  const COVER_MIN = 0.9;
+
   const visible = footprints.filter(f => {
     if (f.kind === 'part') return true;
-    return !parts.some(p => {
-      const c = centroid(p.outer);
-      return pointInRing(c.x, c.z, f.outer);
-    });
+    const fArea = polyArea(f.outer);
+    if (fArea < 1) return true;             // huella degenerada: se muestra igual
+
+    // Suma del area de las partes desde el suelo contenidas en esta huella.
+    // Se acota a fArea para que partes superpuestas (frecuentes en OSM) no
+    // inflen artificialmente la cobertura.
+    let covered = 0;
+    for (const p of groundParts) {
+      if (p === f) continue;
+      if (!pointInRing(p.c.x, p.c.z, f.outer)) continue;
+      covered += Math.min(p.area, fArea);
+      if (covered >= fArea * COVER_MIN) break;
+    }
+    // Si las partes no llegan al 60%, el contorno se conserva: mejor un volumen
+    // de mas que un hueco vacio en la manzana.
+    return covered / fArea < COVER_MIN;
   });
 
+  // Cota de apoyo antes de extruir: las partes de un mismo edificio tienen que
+  // compartirla o no encajan entre si.
+  // Las alturas estimadas se resuelven ANTES de repartir cotas: a partir de
+  // aca heightOf() devuelve lo mismo para todo el mundo.
+  stats.alturas = estimateMissingHeights(visible);
+
+  stats.groups = assignGroundDatums(visible);
+  // ... y se nivela el terreno bajo cada huella ANTES de extruir, para que los
+  // volumenes no emerjan a cotas distintas siguiendo la pendiente.
+  stats.padded  = applyBuildingPads(visible);   // MODO A, apagado por defecto
+  stats.plinths = buildPlinths(visible);        // MODO B
+  console.info('apoyo:', visible.length, 'huellas en', stats.groups,
+               'grupos · apoyo en el percentil',
+               (CFG.buildingAnchor * 100).toFixed(0) + '% del terreno',
+               '· terreno nivelado:', stats.padded, 'vertices',
+               '· zocalos:', stats.plinths);
+
   for (const f of visible) {
-    const mesh = extrudeFootprint(f.outer, f.holes, f.tags, f.kind);
-    if (!mesh) continue;
-    gBuild.add(mesh);
+    const obj = extrudeFootprint(f.outer, f.holes, f.tags, f.kind, f.ground);
+    if (!obj) continue;
+    gBuild.add(obj);
+    // Para compatibilidad con applyExaggeration, si es Group propagamos userData
+    if (obj.isGroup) {
+      obj.userData = obj.children[0]?.userData ?? {};
+    }
     if (f.kind === 'part') stats.part++; else stats.bld++;
   }
 
@@ -1537,43 +2727,66 @@ function processOSM(elements) {
   return stats;
 }
 
-/** Construye todas las capas de superficie acumuladas. */
+/** Construye todas las capas de superficie acumuladas con jerarquía F4maps. */
 function buildSurfaces(jobs) {
   if (!jobs) return { count: 0, layers: 0 };
-  surfLift = SURF.terraceLift * CFG.terrace.fraction;
-  // Cuanto puede hundirse la rasante bajo el terreno sin que asome: una
-  // fraccion del margen que da el desfasaje mas fino (la calzada, 0,18 m).
-  roadCut = SURF.roadCutFrac * (0.18 + surfLift);
   const sb = new SurfaceBuilder();
-  for (const a of jobs.areaJobs) sb.add(a.st, drapedArea(a.outer, a.holes, a.st.off));
+  const cuencos = buildWaterBasins(jobs.areaJobs);
+  for (const a of jobs.areaJobs) {
+    if (a.cavado) continue;                  // lo dibuja el cuenco, no el solado
+    sb.add(a.st, drapedArea(a.outer, a.holes, a.st.off));
+  }
 
-  // Casing primero (mas ancho, mas oscuro, 3 cm mas abajo) y relleno despues.
-  // Ambos se drapean sobre la misma superficie, asi que su separacion es
-  // exactamente 3 cm en todo el recorrido: no hay z-fighting entre ellos.
+  // 1. Bordes/casings: solo para calzadas, veredas y sendas comunes (NUNCA escaleras ni cebras)
   for (const l of jobs.lineJobs) {
     if (l.pts.length < 2) continue;
+    if (l.ls.isStairs || l.ls.isCrossing) continue;
     const c = l.ls.casing;
-    if (c) sb.add({ id: l.ls.id + '·borde', color: c.color, off: l.ls.off - 0.03, quiet: true },
-                  ribbonArea(l.pts, l.ls.width + c.grow, l.ls.off - 0.03));
+    if (!c) continue;
+    const estilo = { id: l.ls.id + '·borde', color: c.color, off: c.off, quiet: true };
+    sb.add(estilo, ribbonArea(l.pts, l.ls.width + c.grow, c.off));
+    sb.add(estilo, jointDiscs(l.pts, l.ls.width + c.grow, c.off));
   }
-  // Taludes antes que las cintas: quedan por debajo y no compiten en el borde.
+
+  // 2. Relleno principal de calzadas, veredas y paseos (no escaleras ni cebras)
   for (const l of jobs.lineJobs) {
     if (l.pts.length < 2) continue;
-    sb.add({ id: 'talud', color: 0x6d6456, off: 0, quiet: true, rough: 1 },
-           ribbonSkirt(l.pts, l.ls.width, l.ls.off));
+    if (l.ls.isStairs || l.ls.isCrossing) continue;
+    sb.add(l.ls, ribbonArea(l.pts, l.ls.width, l.ls.off));
+    sb.add(l.ls, jointDiscs(l.pts, l.ls.width, l.ls.off));
   }
-  for (const l of jobs.lineJobs)
-    if (l.pts.length > 1) sb.add(l.ls, ribbonArea(l.pts, l.ls.width, l.ls.off));
 
-  // Narices de escalon, ultima capa: 2,5 cm sobre la senda, apenas mas oscuras.
-  // Misma separacion que usa el casing, que ya probo no dar z-fighting.
+  // 3. Escaleras rectas (stairwayArea) sin discos circulares y con peldaños ortogonales
   for (const l of jobs.lineJobs) {
-    if (!l.ls.nosing || l.pts.length < 2) continue;
-    sb.add({ id: 'escalón', color: 0x9b8a72, off: l.ls.off + 0.025 },
-           nosingArea(l.pts, l.ls.width * 0.9, l.ls.off + 0.025, l.ls.nosing.count));
+    if (!l.ls.isStairs || l.pts.length < 2) continue;
+    const c = l.ls.casing;
+    if (c) {
+      const estilo = { id: 'escalera·borde', color: c.color, off: c.off, quiet: true };
+      sb.add(estilo, stairwayArea(l.pts, l.ls.width + c.grow, c.off));
+    }
+    sb.add(l.ls, stairwayArea(l.pts, l.ls.width, l.ls.off));
+    if (l.ls.nosing) {
+      sb.add({ id: 'escalón', color: 0x82796c, off: l.ls.off + 0.020 },
+             stairNosingArea(l.pts, l.ls.width, l.ls.off + 0.020, l.ls.nosing.count));
+    }
   }
+
+  // 4. Señalizacion vial F4maps: lineas centrales discontinuas en calzadas principales
+  for (const l of jobs.lineJobs) {
+    if (!l.ls.markings || l.pts.length < 2) continue;
+    sb.add({ id: 'marcas_calzada', color: 0xf2f2f2, off: l.ls.off + 0.008, quiet: true },
+           roadCenterMarkings(l.pts, l.ls.off + 0.008));
+  }
+
+  // 5. Señalizacion vial F4maps: pasos de cebra peatonales (footway=crossing)
+  for (const l of jobs.lineJobs) {
+    if (!l.ls.isCrossing || l.pts.length < 2) continue;
+    sb.add({ id: 'paso_cebra', color: 0xfafafa, off: l.ls.off, quiet: true },
+           zebraCrossingArea(l.pts, l.ls.width, l.ls.off));
+  }
+
   const layers = sb.build(gSurf);
-  return { count: sb.count, layers, report: sb.report, failed: sb.failed };
+  return { count: sb.count, layers, cuencos, report: sb.report, failed: sb.failed };
 }
 
 /* --------------- 10bis. SEDIMENTO Y MALEZA (post-apocaliptico) ------------ */
@@ -1759,129 +2972,6 @@ function applyRubble() {
            escTapada: escTotal ? escTapada / escTotal : 0 };
 }
 
-/* ----------------------- 10bis-b. TERRAZAS DEL TERRENO -------------------- */
-/**
- * Cada escalera dice "cruzando por aca se sube X metros". Eso no describe un
- * bulto alrededor de la escalera: describe que TODA la zona de arriba esta mas
- * alta que TODA la de abajo.
- *
- * Se resuelve como reconstruccion de gradiente sobre una grilla: a las aristas
- * que cruzan el frente de una terraza se les pide una diferencia igual al
- * salto, a todas las demas se les pide diferencia cero, y se relaja el campo.
- * El resultado son dos mesetas unidas por una transicion suave, sin que haya
- * que decidir a mano donde termina cada zona.
- *
- * Sumar bultos no sirve: con 36 escaleras se acumularian 36 lomas. La
- * relajacion, en cambio, concilia todos los saltos en un unico campo coherente.
- */
-const TER = { field: null, n: 0, x0: 0, z0: 0, dx: 1, dz: 1 };
-
-function buildTerraceField(lines) {
-  const C = CFG.terrace;
-  TER.field = null;
-  if (!TG.ready || C.fraction <= 0 || !lines.length) return { gates: 0, range: 0 };
-
-  const n = C.grid;
-  TER.n = n; TER.x0 = TG.x0; TER.z0 = TG.z0;
-  TER.dx = (TG.nx * TG.dx) / (n - 1);
-  TER.dz = (TG.nz * TG.dz) / (n - 1);
-
-  // Diferencias pedidas a cada arista de la grilla. dH[i,j] es el salto entre
-  // (i,j) y (i+1,j); dV[i,j] entre (i,j) y (i,j+1). Cero salvo en los frentes.
-  const dH = new Float32Array(n * n), dV = new Float32Array(n * n);
-  // Contadores: donde varios frentes se superponen se PROMEDIA, no se suma.
-  // Los tramos paralelos de una misma escalinata describen UN desnivel, no uno
-  // por tramo; sumandolos, los 31 frentes del monumento apilaban 10 m.
-  const cH = new Float32Array(n * n), cV = new Float32Array(n * n);
-  let gates = 0;
-
-  for (const l of lines) {
-    const pts = l.pts, nos = l.ls.nosing;
-    if (!nos || !nos.count) continue;
-    const A = pts[0], B = pts[pts.length - 1];
-    const len = Math.hypot(B.x - A.x, B.z - A.z);
-    if (len < 1) continue;
-
-    // eje de ascenso: por defecto A->B, invertido si incline=down
-    const sg = nos.down ? -1 : 1;
-    const ux = sg * (B.x - A.x) / len, uz = sg * (B.z - A.z) / len;
-    const salto = clamp(nos.count * C.riser * C.fraction, 0, C.maxJump);
-
-    // Frente de terraza: recta por el punto medio, PERPENDICULAR al eje de la
-    // escalera y prolongada `gate` metros a cada lado. Cruzarla es subir.
-    const mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2;
-    const px = -uz, pz = ux;
-    const pasos = Math.max(2, Math.ceil((2 * C.gate) / Math.min(TER.dx, TER.dz)));
-    for (let k = 0; k <= pasos; k++) {
-      const t = (k / pasos - 0.5) * 2 * C.gate;
-      const x = mx + px * t, z = mz + pz * t;
-      const i = Math.round((x - TER.x0) / TER.dx), j = Math.round((z - TER.z0) / TER.dz);
-      if (i < 1 || i >= n - 1 || j < 1 || j >= n - 1) continue;
-      // el salto se reparte entre las dos aristas segun la direccion del eje
-      const e = j * n + i;                       // `k` ya es el indice del bucle
-      dH[e] += salto * ux; cH[e] += Math.abs(ux);
-      dV[e] += salto * uz; cV[e] += Math.abs(uz);
-    }
-    gates++;
-  }
-
-  for (let k = 0; k < dH.length; k++) {
-    if (cH[k] > 1e-6) dH[k] /= cH[k];
-    if (cV[k] > 1e-6) dV[k] /= cV[k];
-  }
-
-  // Relajacion de Gauss-Seidel: cada celda se acomoda al promedio de lo que le
-  // piden sus vecinas. Converge a la superficie mas suave que respeta los saltos.
-  const H = new Float32Array(n * n);
-  for (let it = 0; it < C.iters; it++) {
-    for (let j = 1; j < n - 1; j++) for (let i = 1; i < n - 1; i++) {
-      const k = j * n + i;
-      H[k] = 0.25 * ((H[k - 1] + dH[k - 1]) + (H[k + 1] - dH[k]) +
-                     (H[k - n] + dV[k - n]) + (H[k + n] - dV[k]));
-    }
-    if ((it & 31) === 31) {                 // el campo puede derivar: se recentra
-      let m = 0;
-      for (const v of H) m += v;
-      m /= H.length;
-      for (let k = 0; k < H.length; k++) H[k] -= m;
-    }
-  }
-
-  let lo = Infinity, hi = -Infinity;
-  for (const v of H) { if (v < lo) lo = v; if (v > hi) hi = v; }
-  TER.field = H;
-  console.info('terrazas:', gates, 'frentes |', (hi - lo).toFixed(2),
-               'm entre la meseta mas baja y la mas alta');
-  return { gates, range: hi - lo, lo, hi };
-}
-
-/** Cota de terraza en un punto, interpolada. */
-function terraceAt(x, z) {
-  if (!TER.field) return 0;
-  const n = TER.n;
-  const gx = clamp((x - TER.x0) / TER.dx, 0, n - 1);
-  const gz = clamp((z - TER.z0) / TER.dz, 0, n - 1);
-  const i = Math.min(n - 2, Math.floor(gx)), j = Math.min(n - 2, Math.floor(gz));
-  const fx = gx - i, fz = gz - j, F = TER.field;
-  const a = F[j * n + i],       b = F[j * n + i + 1];
-  const c = F[(j + 1) * n + i], d = F[(j + 1) * n + i + 1];
-  return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
-}
-
-/** Suma el campo de terrazas a la malla. Va ANTES del sedimento. */
-function applyTerraces() {
-  if (!terrainMesh || !TER.field) return;
-  const pos = terrainMesh.geometry.attributes.position;
-  const ox = terrainMesh.position.x, oz = terrainMesh.position.z;
-  for (let i = 0; i < pos.count; i++) {
-    const y = terrainBaseY[i] + terraceAt(pos.getX(i) + ox, pos.getZ(i) + oz);
-    terrainBaseY[i] = y;
-    pos.setY(i, y);
-  }
-  pos.needsUpdate = true;
-  terrainMesh.geometry.computeVertexNormals();
-}
-
 /* ------------------------ 10ter. MALEZA INSTANCIADA ----------------------- */
 /**
  * Matas de pasto como geometria instanciada. Una sola malla de unas pocas
@@ -2064,10 +3154,14 @@ function syntheticMonument() {
 
 /** Vacia un grupo liberando su geometria (y el material si es propio suyo). */
 function clearGroup(g, ownMaterial = false) {
-  for (const o of g.children) {
+  // traverse y no un for sobre children: extrudeFootprint devuelve un Group
+  // (cuerpo + techo) y recorrer solo el primer nivel dejaba sin liberar TODA
+  // la geometria de los edificios en cada reconstruccion.
+  g.traverse(o => {
+    if (o === g) return;
     o.geometry?.dispose();
     if (ownMaterial) o.material?.dispose();
-  }
+  });
   g.clear();
 }
 
@@ -2097,11 +3191,9 @@ function rebuildAll() {
 
   clearGroup(gBuild); clearGroup(gSurf, true);
   STITCH.open = 0;
+  for (const k of Object.keys(ROOF_STATS)) delete ROOF_STATS[k];
 
   const stats = processOSM(window.__OSM);
-  buildTerraceField(stats.stepLines);
-  applyTerraces();
-  gradeRoads(stats.jobs.lineJobs);
   terrainCleanY = Float32Array.from(terrainBaseY);
   const surf = buildSurfaces(stats.jobs);
   buildObstacleField(stats.footprints);
@@ -2112,9 +3204,10 @@ function rebuildAll() {
   ui.stat('s-ele',    fmt(dem.min) + ' – ' + fmt(dem.max) + ' m s.n.m.');
   ui.stat('s-bld',    stats.bld);
   ui.stat('s-part',   stats.part);
-  ui.stat('s-surf',   surf.count + (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
-  ui.stat('s-ter',     TER.field ? (CFG.terrace.fraction * 100).toFixed(0) + '% · alcance ' +
-                       CFG.terrace.gate.toFixed(0) + ' m' : '—');
+  ui.stat('s-alturas', alturasReport(stats.alturas));
+  ui.stat('s-roof',   roofReport());
+  ui.stat('s-surf',   surf.count + (surf.cuencos ? ' · ' + surf.cuencos + ' cuencos de agua' : '') +
+                      (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
   document.getElementById('s-layers').innerHTML =
     surf.report.map(([id, n]) => id + ' <b>' + n + '</b>').join(' · ');
 
@@ -2149,8 +3242,6 @@ function frameMonument(distance = 420) {
 async function main() {
   CFG.dem.relief = 1 - parseFloat(document.getElementById('r-flat').value) / 100;
   CFG.rubble.amount = parseFloat(document.getElementById('r-rub').value) / 100;
-  CFG.terrace.fraction = parseFloat(document.getElementById('r-ter').value) / 100;
-  CFG.terrace.gate     = parseFloat(document.getElementById('r-tg').value);
   CFG.grass.density = parseFloat(document.getElementById('r-gd').value) / 100;
   CFG.grass.height  = parseFloat(document.getElementById('r-gh').value) / 100;
   const bbox = CFG.bbox;
@@ -2223,18 +3314,6 @@ async function main() {
     ui.set('Overpass no disponible: volumenes esquematicos de demostracion', 'warn');
   }
 
-  // Las terrazas van ANTES de fijar el terreno limpio: el solado tiene que
-  // apoyarse en el terreno ya escalonado, no en el DEM pelado.
-  ui.set('escalonando el terreno ...');
-  const ter = buildTerraceField(stats.stepLines);
-  applyTerraces();
-
-  // Nivelacion del terreno bajo la red de circulacion. Va DESPUES de las
-  // terrazas (nivela contra el terreno ya escalonado) y ANTES de fijar el
-  // terreno limpio, que es lo que despues usa el solado para apoyarse.
-  ui.set('nivelando el terreno bajo las calles ...');
-  const grd = gradeRoads(stats.jobs.lineJobs);
-
   // El solado se drapea sobre el terreno LIMPIO; el sedimento viene despues y
   // es el que decide que queda tapado y que asoma.
   terrainCleanY = Float32Array.from(terrainBaseY);
@@ -2253,17 +3332,15 @@ async function main() {
     (surf.failed.length ? ' <span style="color:var(--err)">falló: ' + surf.failed.join(', ') + '</span>' : '');
   console.info('superficies:', surf.count, 'en', surf.layers, 'capas',
                '| anillos descartados por no cerrar:', STITCH.open,
-               '| terrazas', ter.range.toFixed(2) + ' m',
-               '| nivelado', (100 * grd.touched / grd.total).toFixed(0) + '% del terreno,',
-               'hasta', grd.max.toFixed(2), 'm',
                '| solado tapado', (100 * rub.raised / rub.total).toFixed(0) + '%',
                '| escaleras tapadas', (100 * rub.escTapada).toFixed(0) + '%',
                '| maximo', rub.max.toFixed(2), 'm');
 
   ui.stat('s-bld',    stats.bld);
   ui.stat('s-part',   stats.part);
+  ui.stat('s-alturas', alturasReport(stats.alturas));
+  ui.stat('s-roof',   roofReport());
   ui.stat('s-surf',   stats.surf + (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
-  ui.stat('s-ter',    ter.gates + ' frentes · ' + ter.range.toFixed(2) + ' m de desnivel');
   ui.stat('s-grass',  gr.n.toLocaleString('es-AR') + ' matas · ' +
                       (gr.tris / 1000).toFixed(0) + 'k tri · 1 draw call');
   ui.stat('s-rub',    (100 * rub.raised / rub.total).toFixed(0) + '% del solado · ' +
@@ -2296,22 +3373,6 @@ document.getElementById('c-bld').onchange   = e => { gBuild.visible = e.target.c
 
 document.getElementById('c-grass').onchange = e => { gGrass.visible = e.target.checked; };
 
-/* Las terrazas cambian la base del terreno, asi que obligan a rehacer todo lo
-   que se apoya en el: solado, sedimento y maleza. */
-for (const [id, key, div, fmtv] of [
-  ['r-ter', 'fraction', 100, v => (v * 100).toFixed(0) + '%'],
-  ['r-tg',  'gate',       1, v => v.toFixed(0) + ' m']
-]) {
-  const el = document.getElementById(id);
-  el.oninput = () => {
-    document.getElementById(id + '-v').textContent = fmtv(parseFloat(el.value) / div);
-  };
-  el.onchange = () => {
-    CFG.terrace[key] = parseFloat(el.value) / div;
-    ui.set('escalonando el terreno …');
-    requestAnimationFrame(() => { rebuildAll(); ui.set('listo', 'ok'); });
-  };
-}
 
 /* La densidad obliga a resembrar; la altura solo recompone las matrices, que
    es mucho mas barato y se puede aplicar al vuelo. */
