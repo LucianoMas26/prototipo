@@ -17,9 +17,29 @@
 
   .panel{position:absolute;background:var(--panel);border:1px solid var(--line);
     border-radius:10px;padding:12px 14px;backdrop-filter:blur(8px);max-width:min(340px,42vw)}
-  #hud{top:12px;left:12px}
-  #legend{bottom:12px;left:12px}
-  #help{bottom:12px;right:12px;max-width:260px;color:var(--muted)}
+  /* Columna izquierda: el HUD crecia hacia abajo y la leyenda hacia arriba, de
+     modo que en una ventana baja se pisaban y los sliders del final quedaban
+     fuera de pantalla. Ahora las dos viven en una columna de alto acotado y la
+     que no entra scrollea. El contenedor no recibe el mouse, asi que el hueco
+     entre paneles sigue orbitando la camara. */
+  #izq{position:absolute;top:12px;bottom:12px;left:12px;z-index:5;
+       display:flex;flex-direction:column;gap:10px;
+       width:min(340px,42vw);pointer-events:none}
+  #izq > .panel{position:static;max-width:none;width:100%;pointer-events:auto;
+       overflow-y:auto;overscroll-behavior:contain;min-height:0}
+  #hud{flex:1 1 auto}
+  #legend{flex:0 1 auto;max-height:42vh}
+  #help{bottom:12px;right:12px;max-width:260px;color:var(--muted);z-index:5}
+
+  /* Barra de scroll al tono del panel, y visible mientras haga falta: si no se
+     ve, no se sabe que hay mas abajo. */
+  #izq > .panel{scrollbar-width:thin;scrollbar-color:#3a4552 transparent}
+  #izq > .panel::-webkit-scrollbar{width:9px}
+  #izq > .panel::-webkit-scrollbar-track{background:transparent}
+  #izq > .panel::-webkit-scrollbar-thumb{background:#3a4552;border-radius:5px;
+       border:2px solid transparent;background-clip:content-box}
+  #izq > .panel::-webkit-scrollbar-thumb:hover{background:#4d5a6b;
+       border:2px solid transparent;background-clip:content-box}
   h1{font-size:13px;margin:0 0 8px;letter-spacing:.3px}
   h1 small{display:block;font-weight:400;color:var(--muted);font-size:11px;letter-spacing:0}
   .row{display:flex;justify-content:space-between;gap:10px;padding:1px 0}
@@ -32,6 +52,14 @@
   label.chk input{accent-color:var(--accent)}
   .rng{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--muted)}
   .rng input{flex:1}
+  .buscar{display:flex;gap:6px;margin:8px 0 2px}
+  .buscar input{flex:1;min-width:0;background:#11181f;color:var(--fg);
+    border:1px solid var(--line);border-radius:5px;padding:5px 8px;font:inherit}
+  .buscar input:focus{outline:none;border-color:var(--accent)}
+  .buscar button{background:#1b232e;color:var(--fg);border:1px solid var(--line);
+    border-radius:5px;padding:5px 10px;font:inherit;cursor:pointer}
+  .buscar button:hover{border-color:var(--accent)}
+  .buscar button[disabled]{opacity:.5;cursor:progress}
   #status{color:var(--muted)}
   .tiny{color:var(--muted);font-size:11px;line-height:1.5;margin:2px 0 0;word-spacing:4px}
   .tiny b{color:var(--fg);font-weight:600}
@@ -47,9 +75,18 @@
 <body>
 <div id="app"></div>
 
+<div id="izq">
 <div id="hud" class="panel">
-  <h1>Monumento a la Bandera — Rosario
+  <h1><span id="h-zona">Monumento a la Bandera — Rosario</span>
     <small>Mapzen Terrarium DEM + OpenStreetMap (Overpass)</small></h1>
+  <div class="buscar">
+    <input id="q-zona" type="text" autocomplete="off" spellcheck="false"
+           placeholder="ir a otra ciudad, pueblo o lugar…">
+    <button id="b-zona" title="Buscar y recargar la escena">Ir</button>
+  </div>
+  <div class="rng"><span>Lado</span>
+    <input type="range" id="r-lado" min="600" max="2000" step="100" value="1000">
+    <b id="r-lado-v">1000 m</b></div>
   <div id="status">iniciando…</div>
   <hr>
   <div class="row"><span class="k">DEM</span><b id="s-dem">—</b></div>
@@ -57,6 +94,8 @@
   <div class="row"><span class="k">Edificios</span><b id="s-bld">—</b></div>
   <div class="row"><span class="k">building:part</span><b id="s-part">—</b></div>
   <div class="row"><span class="k">Alturas</span><b id="s-alturas">—</b></div>
+  <div class="row"><span class="k">Barreras</span><b id="s-bar">—</b></div>
+  <div class="row"><span class="k">Anchos</span><b id="s-anchos">—</b></div>
   <div class="row"><span class="k">Techos 3D</span><b id="s-roof">—</b></div>
   <div class="row"><span class="k">Superficies</span><b id="s-surf">—</b></div>
   <div class="row"><span class="k">Cubierto</span><b id="s-rub">—</b></div>
@@ -94,8 +133,10 @@
   <div><span class="sw" style="background:#70603f"></span>sedimento · <span class="sw" style="background:#546f38"></span>maleza — tapan el solado donde se acumulan</div>
   <div><span class="sw" style="background:#4a5c22"></span>matas instanciadas, sembradas sobre el sedimento</div>
   <div><span class="sw" style="background:#6ea344"></span>parque / césped · <span class="sw" style="background:#2b6c99"></span>agua · <span class="sw" style="background:#a89474"></span>muelle</div>
+  <div><span class="sw" style="background:#4a7c3f"></span>seto · <span class="sw" style="background:#b9b3a7"></span>muro · <span class="sw" style="background:#6b6b6b"></span>cerco — alto y color de OSM, o estimados de la zona</div>
   <div><span class="sw" style="background:#3c3f46"></span>calzada (asfalto) · <span class="sw" style="background:#dcd8cf"></span>vereda · <span class="sw" style="background:#f5f5f5"></span>marcas/cebra</div>
   <div><span class="sw" style="background:linear-gradient(135deg,#E6E4D8,#8fa1b5)"></span>color real de OSM (<code>building:colour</code>)</div>
+</div>
 </div>
 
 <div id="help" class="panel">
@@ -105,7 +146,7 @@
 
 <div id="splash">
   <div>
-    <div style="font-size:15px">Monumento a la Bandera · Rosario</div>
+    <div style="font-size:15px" id="splash-zona">Monumento a la Bandera · Rosario</div>
     <div style="color:#8b949e;margin-top:6px" id="splash-txt">cargando…</div>
     <div class="bar"><i id="splash-bar"></i></div>
   </div>
@@ -121,7 +162,9 @@
 <script type="module">
 /* ==========================================================================
    PROTOTIPO: Terreno real (Mapzen Terrarium) + vectores OSM (Overpass)
-   Zona: Monumento Nacional a la Bandera, Rosario, Argentina.
+   Zona de arranque: Monumento Nacional a la Bandera, Rosario, Argentina.
+   No esta cableada: el buscador del HUD (Nominatim) mueve la escena a
+   cualquier ciudad, pueblo o lugar del mundo y reconstruye todo.
 
    Pipeline:
      1) bbox geografico  ->  rango de teselas XYZ (Web Mercator)
@@ -143,14 +186,23 @@ import { TessellateModifier } from 'three/addons/modifiers/TessellateModifier.js
 /* ----------------------------- 0. CONFIGURACION --------------------------- */
 
 const CFG = {
-  // bbox pedido: sur, oeste, norte, este
-  bbox: { s: -32.952, w: -60.635, n: -32.943, e: -60.625 },
+  // bbox de trabajo: sur, oeste, norte, este. No se escribe a mano: se
+  // calcula mas abajo a partir del FOCO y del lado, igual que cuando se
+  // busca otra zona. Arranca en null solo porque el foco se declara luego.
+  bbox: null,
 
   // Los datos vectoriales se piden con margen alrededor del bbox visible: sin
   // eso, las relaciones multipoligono que se salen del recuadro llegan con
   // miembros faltantes y sus anillos no cierran (p.ej. Parque Nacional de la
   // Bandera, que perdia 2 de 17 miembros).
   dataPad: 0.0015,  // ~165 m
+
+  // Tamano de la zona a reconstruir, en metros de lado. El bbox NO se
+  // escribe a mano: se arma centrado en el lugar buscado con este lado.
+  // Lo que devuelve el geocodificador se recorta a este rango porque el
+  // bbox de una ciudad entera (Rosario mide ~0,3 grados) pide a Overpass
+  // mil veces mas datos de los que el visor puede extruir.
+  zona: { lado: 1000, ladoMin: 600, ladoMax: 2000 },
 
   demZoom:    14,   // zoom de las teselas Terrarium (~2.4 km/tesela en Rosario)
   rasterZoom: 17,   // zoom del mapa raster que se pinta sobre el terreno
@@ -294,8 +346,9 @@ const CFG = {
   overpassEndpoints: [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.private.coffee/api/interpreter',
-    'https://overpass.osm.jp/api/interpreter'
+    'https://overpass.private.coffee/api/interpreter'
+    // overpass.osm.jp quedo afuera: su certificado vencio el 22/06/2026 y el
+    // navegador corta el pedido antes de mandarlo. Solo agregaba demora.
   ],
   // Respaldo: la API principal de OSM. Devuelve XML crudo del bbox y corre
   // sobre infraestructura distinta de Overpass, asi que sobrevive a sus caidas.
@@ -303,6 +356,9 @@ const CFG = {
   // edicion y pide usar Overpass para consultas. Un bbox chico es aceptable
   // como plan B, no como fuente habitual.
   osmApi: 'https://api.openstreetmap.org/api/0.6/map',
+
+  // Nominatim: nombre de lugar -> coordenadas. Es el buscador de osm.org.
+  geocoder: 'https://nominatim.openstreetmap.org/search',
   fetchTimeout: 30000
 };
 
@@ -317,9 +373,22 @@ const ui = {
     this.splashTxt.textContent = msg;
   },
   prog(p) { this.splashBar.style.width = (p * 100).toFixed(0) + '%'; },
+  // El splash no se destruye: cambiar de zona vuelve a mostrarlo.
+  mostrarSplash() {
+    clearTimeout(this._t);
+    this.splash.style.display = 'grid';
+    this.splash.style.opacity = '1';
+    this.prog(0);
+  },
+  ocultarSplash() {
+    this.splash.style.opacity = '0';
+    this._t = setTimeout(() => { this.splash.style.display = 'none'; }, 600);
+  },
   stat(id, v) { document.getElementById(id).textContent = v; }
 };
 const fmt   = n => (Math.round(n * 10) / 10).toFixed(1);
+/** Porcentaje sin NaN: si no hubo nada que medir, es 0. */
+const pct   = (parte, total) => (total ? 100 * parte / total : 0).toFixed(0);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /* --------------------- 1. WEB MERCATOR Y ARITMETICA DE TESELAS ------------ */
@@ -780,31 +849,30 @@ const padded = () => ({
   s: CFG.bbox.s - CFG.dataPad, n: CFG.bbox.n + CFG.dataPad,
   w: CFG.bbox.w - CFG.dataPad, e: CFG.bbox.e + CFG.dataPad
 });
-const PB = padded();
+/* Las etiquetas que sabemos dibujar. Es una lista de esquema OSM, no de esta
+   ciudad: la misma consulta sirve en cualquier lado. */
+const OSM_LLAVES = ['building', 'building:part', 'highway', 'leisure', 'landuse',
+                    'natural', 'amenity', 'man_made', 'barrier'];
 
-const OVERPASS_QL = `
-[out:json][timeout:90];
-(
-  way["building"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["building:part"](${PB.s},${PB.w},${PB.n},${PB.e});
-  relation["building"](${PB.s},${PB.w},${PB.n},${PB.e});
-  relation["building:part"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["highway"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["leisure"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["landuse"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["natural"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["amenity"](${PB.s},${PB.w},${PB.n},${PB.e});
-  way["man_made"](${PB.s},${PB.w},${PB.n},${PB.e});
-  relation["leisure"](${PB.s},${PB.w},${PB.n},${PB.e});
-  relation["landuse"](${PB.s},${PB.w},${PB.n},${PB.e});
-  relation["natural"](${PB.s},${PB.w},${PB.n},${PB.e});
-);
-out body geom qt;
-`;
+/* La consulta se ARMA en cada pedido, no al cargar el modulo: si quedara
+   congelada en una constante, cambiar de ciudad no cambiaria lo que se pide. */
+function overpassQL() {
+  const b = padded();
+  /* 6 decimales: ~10 cm. Evita que el redondeo binario ensucie la consulta. */
+  const g = v => Number(v.toFixed(6));
+  const caja = `(${g(b.s)},${g(b.w)},${g(b.n)},${g(b.e)})`;
+  const lineas = [];
+  for (const k of OSM_LLAVES) {
+    lineas.push(`  way["${k}"]${caja};`);
+    lineas.push(`  relation["${k}"]${caja};`);
+  }
+  return ['[out:json][timeout:90];', '(', ...lineas, ');',
+          'out body geom qt;'].join("\n");
+}
 
 /** Etiquetas que el visor sabe dibujar (filtro comun a las dos fuentes). */
 const isRelevant = t =>
-  !!(t.building || t['building:part'] || t.highway || t.leisure || t.landuse ||
+  !!(t.barrier || t.building || t['building:part'] || t.highway || t.leisure || t.landuse ||
      t.natural || t.amenity || t.man_made || t['area:highway']);
 
 /** Consulta Overpass probando mirrors hasta que uno responda. */
@@ -816,7 +884,7 @@ async function fetchOverpass() {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(OVERPASS_QL),
+        body: 'data=' + encodeURIComponent(overpassQL()),
         signal: AbortSignal.timeout(CFG.fetchTimeout)
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -838,7 +906,8 @@ async function fetchOverpass() {
  * para que processOSM() no note la diferencia.
  */
 async function fetchOsmApi() {
-  const b = PB;
+  // padded() y no una constante: el bbox cambia cuando se cambia de zona.
+  const b = padded();
   const url = CFG.osmApi + '?bbox=' + [b.w, b.s, b.e, b.n].join(',');
   ui.set('Overpass caido: consultando api.openstreetmap.org ...', 'warn');
 
@@ -1110,6 +1179,12 @@ function alturasReport(a) {
   if (!a.estimadas) return a.declaradas + ' con dato de OSM';
   return a.declaradas + ' de OSM · ' + a.estimadas +
          ' estimadas (' + (100 * a.estimadas / tot).toFixed(0) + '%)';
+}
+
+/** "14 · 1 con alto de OSM · 13 estimados" para el HUD. */
+function barrerasReport(b) {
+  if (!b || !b.total) return '—';
+  return b.total + ' · ' + b.declarados + ' con alto de OSM · ' + b.estimados + ' estimados';
 }
 
 /** Vuelca ROOF_STATS al HUD: "12 · gabled 5 · hipped 4 · dome 1". */
@@ -1952,6 +2027,47 @@ const SURF = {
   roadSmooth: 0, roadCut: 0.10
 };
 
+/* Color del solado segun `surface`, que es una etiqueta global de OSM: la
+   misma tabla sirve para cualquier ciudad. Si el valor no esta en la tabla se
+   devuelve el color por defecto de la capa, sin inventar nada. */
+const SUPERFICIE = {
+  paving_stones: 0xd8d3c8, sett: 0xc4bdb0, cobblestone: 0xbdb5a7,
+  concrete: 0xd0cdc6, paved: 0xd5d1c9, asphalt: 0x6f7378,
+  gravel: 0xc2b9a6, fine_gravel: 0xcdc5b4, compacted: 0xc8bfae,
+  ground: 0xb2a189, dirt: 0xad9b83, earth: 0xad9b83, sand: 0xe0d2ad,
+  grass: 0x6ea344, wood: 0xa98a5f, metal: 0x9aa0a6, tartan: 0xb5634a
+};
+function colorDeSuperficie(sup, porDefecto) {
+  if (!sup) return porDefecto;
+  const c = SUPERFICIE[String(sup).trim().toLowerCase()];
+  return c === undefined ? porDefecto : c;
+}
+
+/* ESCALERA DE CAPAS DEL SOLADO.
+ *
+ * Todo lo que se drapea comparte el terreno, asi que el orden lo decide un
+ * desfasaje de centimetros. Estaba cruzado: el area peatonal (0,16) tapaba el
+ * borde de las veredas (0,155) y la arboleda (0,18) tapaba la cinta de vereda
+ * (0,175). Se ordena en tres bandas:
+ *
+ *   1. SUELO      0,06 - 0,15   lo que uno pisa: predios, verde, plazas, agua
+ *   2. BORDES     0,155 - 0,21  el casing de cada camino  (ver CASING)
+ *   3. CINTAS     0,175 - 0,24  el relleno de cada camino
+ *
+ * Asi ningun suelo puede tapar el borde de un camino, y el agua queda sobre
+ * toda la vegetacion pero por debajo de un puente que la cruce.
+ */
+const SUELO = {
+  predio:    0.060,
+  verde:     0.100,
+  deportivo: 0.110,
+  playa:     0.120,
+  arboleda:  0.130,
+  peatonal:  0.145,   // plazas y veredas mapeadas como area
+  agua:      0.150    // sobre toda la vegetacion, debajo de los caminos
+};
+const AGUA_OFF = SUELO.agua;
+
 /** Clasifica un poligono. Devuelve null si el visor no lo sabe dibujar. */
 function classifyArea(t) {
   if (t.building || t['building:part']) return null;        // ya son volumenes
@@ -1962,30 +2078,229 @@ function classifyArea(t) {
     const cuenco = t.amenity === 'fountain' || t.man_made === 'water_basin' ||
                    ['reflecting_pool', 'basin', 'pond', 'fountain']
                      .includes(t.water ?? '');
-    return { id: 'agua', color: 0x2b6c99, off: 0.05, rough: 0.18, metal: 0.15,
+    // El agua va POR ENCIMA de la vegetacion. Estaba en 0,05 y el cesped en
+    // 0,12, asi que un espejo dentro de un parque quedaba tapado por 7 cm y
+    // no se veia: le pasaba al de la Plaza Barrancas de las Ceibas y a otro.
+    // Sigue por debajo de la calzada (0,23), que es lo correcto cuando un
+    // puente cruza el agua.
+    return { id: 'agua', color: 0x2b6c99, off: AGUA_OFF, rough: 0.18, metal: 0.15,
              cuenco };
   }
   if (t.natural === 'wood' || t.landuse === 'forest')
-    return { id: 'arboleda',  color: 0x3d6632, off: 0.18 };
+    return { id: 'arboleda',  color: 0x3d6632, off: SUELO.arboleda };
   if (t.leisure === 'park' || t.leisure === 'garden' || t.landuse === 'grass' ||
       t.landuse === 'recreation_ground' || t.leisure === 'pitch')
-    return { id: 'verde',     color: 0x6ea344, off: 0.12 };
+    return { id: 'verde',     color: 0x6ea344, off: SUELO.verde };
   if (t.leisure === 'sports_centre' || t.leisure === 'swimming_pool' || t.leisure === 'playground')
-    return { id: 'deportivo', color: 0x5b8a54, off: 0.14 };
+    return { id: 'deportivo', color: 0x5b8a54, off: SUELO.deportivo };
   if (t.amenity === 'parking')
-    return { id: 'playa',     color: 0x484b52, off: 0.14 };
+    return { id: 'playa',     color: 0x484b52, off: SUELO.playa };
   if (t.man_made === 'pier')
-    return { id: 'muelle',    color: 0xa89474, off: 0.36 };
+    // Justo debajo de la calzada: un muelle es una tarima sobre el agua,
+    // pero si una calle lo cruza manda la calle. Sigue muy por encima del
+    // agua (0,150), que es lo que tiene que tapar.
+    return { id: 'muelle',    color: 0xa89474, off: 0.225 };
   if (t.historic === 'memorial' || t.amenity === 'fountain')
-    return { id: 'plaza_monumento', color: 0xdcd7cc, off: 0.16 };
-  if (t.highway === 'pedestrian' || t['area:highway'] || t.place === 'square')
-    return { id: 'peatonal',  color: 0xe2ded4, off: 0.16 };
+    return { id: 'plaza_monumento', color: 0xdcd7cc, off: SUELO.peatonal };
+  // Una vereda o una plaza puede venir como AREA y no como linea: es
+  // `highway=footway|pedestrian|...` con `area=yes`, y muchas veces como
+  // relacion multipoligono. Sin esta regla caia en classifyLine y se dibujaba
+  // como una cinta de 2 m siguiendo su contorno, en vez de un piso. El de la
+  // Plaza Barrancas de las Ceibas son 2651 m2 de piso que no aparecian.
+  // Solo vias de peaton: un `highway=service area=yes` es una playa de
+  // maniobras, no una plaza, y se dibuja con su propio color de superficie.
+  const PEATONAL = ['pedestrian', 'footway', 'path', 'steps', 'corridor',
+                    'living_street'];
+  // Un `type=multipolygon` ES un area por definicion, aunque no repita
+  // `area=yes`: dos de las tres plazas de esta zona vienen asi.
+  const esAreaPeatonal = (t.area === 'yes' || t['area:highway'] ||
+                          t.type === 'multipolygon') &&
+                         PEATONAL.includes(t.highway);
+  if (t.highway === 'pedestrian' || t['area:highway'] || t.place === 'square' ||
+      esAreaPeatonal)
+    return { id: 'peatonal·' + (t.surface || 'liso'),
+             color: colorDeSuperficie(t.surface, 0xe2ded4), off: SUELO.peatonal };
   if (t.amenity === 'school' || t.amenity === 'hospital' ||
       ['military', 'brownfield', 'construction', 'industrial', 'religious'].includes(t.landuse))
-    return { id: 'predio',    color: 0x8d8b85, off: 0.06 };
+    return { id: 'predio',    color: 0x8d8b85, off: SUELO.predio };
   // landuse=residential / commercial / retail son zonificacion administrativa,
   // no superficie: no se dibujan.
   return null;
+}
+
+/**
+ * ANCHO DE CALZADA A PARTIR DE LAS ETIQUETAS.
+ *
+ * Antes el ancho era una constante por clase: toda primary media 12 m,
+ * toda residential 7 m. En esta descarga eso da 2,0 m de error medio -- la
+ * Avenida Manuel Belgrano, que declara lanes=2, salia de 12 m siendo de 7 --
+ * y hace que 21 de los 66 cruces entre calzadas junten cintas de ancho
+ * distinto, con escalones de hasta 5 m. Ese escalon es lo que se lee como
+ * un camino "cortado" en el cruce.
+ *
+ * El orden es el de la confianza del dato:
+ *   1. `width`: el ancho medido. Mandan los metros.
+ *   2. `lanes` (o lanes:forward + lanes:backward) por el ancho de carril,
+ *      mas lo que va pegado a la calzada y tambien es asfalto: cordon de
+ *      estacionamiento, carril bus y ciclovia sobre calzada.
+ *   3. la convencion de la clase, como ultimo recurso.
+ *
+ * Todo son etiquetas del esquema global de OSM, asi que funciona igual en
+ * cualquier ciudad. Los metros por carril se CALIBRAN con las vias que
+ * declaran `width` y `lanes` a la vez en esta misma descarga; si no hay
+ * muestra suficiente (aca no hay ninguna), queda la convencion.
+ */
+const LANE = {
+  porCarril: 3.5,      // carril de 3,25 m mas su parte de cuneta
+  estacion:  2.2,      // cordon de estacionamiento en paralelo
+  bici:      1.5,      // ciclovia pintada sobre la calzada
+  minimo:    2.5,
+  maximo:    45,
+  calibrado: false,    // lo pone calibrateLanes si encuentra muestra
+  // anchos medianos medidos en esta descarga
+  porCalle:  {},       // "nombre|clase" -> metros (la misma calle)
+  porClase:  {}        // highway -> metros (ultimo recurso con dato)
+};
+
+/** Carriles declarados: `lanes`, o la suma de los dos sentidos. */
+function laneCount(t) {
+  const n = parseInt(t.lanes, 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  const f = parseInt(t['lanes:forward'], 10);
+  const b = parseInt(t['lanes:backward'], 10);
+  const suma = (Number.isFinite(f) ? f : 0) + (Number.isFinite(b) ? b : 0);
+  return suma > 0 ? suma : 0;
+}
+
+/* Valores que significan que en ese lado NO hay nada. `separate` quiere
+   decir que esta mapeado como via aparte, asi que ya lo dibuja ella. */
+const SIN_NADA = new Set(['no', 'none', 'separate', 'no_parking',
+                          'no_stopping']);
+/** Cuantos lados llevan cordon de estacionamiento (0, 1 o 2). */
+function parkingLados(t) {
+  const hay = v => v !== undefined && !SIN_NADA.has(String(v).toLowerCase());
+  if (hay(t['parking:both'])) return 2;
+  return (hay(t['parking:left']) ? 1 : 0) + (hay(t['parking:right']) ? 1 : 0);
+}
+/** Ciclovias y carriles bus que van SOBRE la calzada, no separados. */
+function extrasDeCalzada(t) {
+  let m = 0;
+  for (const lado of ['left', 'right', 'both']) {
+    const c = t['cycleway:' + lado];
+    if (c && ['lane', 'share_busway', 'shared_lane'].includes(c))
+      m += LANE.bici * (lado === 'both' ? 2 : 1);
+    const b = t['busway:' + lado];
+    if (b && !SIN_NADA.has(String(b).toLowerCase()))
+      m += LANE.porCarril * (lado === 'both' ? 2 : 1);
+  }
+  return m;
+}
+
+/**
+ * Ancho de una via en metros y de donde salio, para poder contarlo.
+ * `porClase` es la convencion de la clase; `usaCarriles` distingue una
+ * calzada de una vereda, donde `lanes` no significa nada.
+ */
+/** Ancho que la via DECLARA, o null si no declara ninguno. */
+function anchoDeclarado(t, usaCarriles) {
+  const w = parseLength(t.width);
+  if (Number.isFinite(w) && w > 0)
+    return { m: clamp(w, 1, LANE.maximo), de: 'width' };
+  if (usaCarriles) {
+    const n = laneCount(t);
+    if (n) {
+      const m = n * LANE.porCarril + parkingLados(t) * LANE.estacion + extrasDeCalzada(t);
+      return { m: clamp(m, LANE.minimo, LANE.maximo), de: 'lanes' };
+    }
+  }
+  return null;
+}
+
+function anchoDeVia(t, porClase, usaCarriles) {
+  const dec = anchoDeclarado(t, usaCarriles);
+  if (dec) return dec;
+  // Sin dato propio: la mediana de SU clase en esta descarga. Sin esto, una
+  // residential sin `lanes` se quedaba en la constante de 7 m y chocaba
+  // contra su vecina de 3,5 m, que si declara -- el escalon en el cruce
+  // pasaba de 21 casos a 33 justamente por mezclar las dos fuentes.
+  if (usaCarriles) {
+    const k = claveDeCalle(t);
+    const propia = k ? LANE.porCalle[k] : undefined;
+    if (Number.isFinite(propia)) return { m: propia, de: 'calle' };
+    const m = LANE.porClase[t.highway];
+    if (Number.isFinite(m)) return { m, de: 'vecinos' };
+  }
+  return { m: porClase, de: 'clase' };
+}
+
+/**
+ * Metros de calzada por carril, medidos en ESTA descarga con las vias que
+ * declaran `width` y `lanes` a la vez. Hace falta muestra: con menos de 3
+ * vias la mediana no dice nada y se queda la convencion.
+ */
+const mediana = a => { const s = [...a].sort((x, y) => x - y);
+                       return s[Math.floor(s.length / 2)]; };
+
+/**
+ * Identidad de una calle: su nombre y su clase. Una avenida partida en
+ * ocho ways sigue siendo una sola avenida, y tiene un solo ancho.
+ * Sin nombre no hay identidad, y devuelve null.
+ */
+const claveDeCalle = t => {
+  const n = (t.name || t.ref || '').trim().toLowerCase();
+  return n ? n + '|' + t.highway : null;
+};
+
+function calibrateLanes(elements) {
+  LANE.porCarril = 3.5; LANE.calibrado = false;
+  LANE.porClase = {}; LANE.porCalle = {};
+
+  // 1. metros por carril: solo lo dicen las vias que declaran los dos datos
+  const r = [];
+  for (const el of elements) {
+    const t = el.tags; if (!t || !t.highway) continue;
+    const w = parseLength(t.width), n = laneCount(t);
+    if (Number.isFinite(w) && w > 0 && n) r.push(w / n);
+  }
+  if (r.length >= 3) {
+    const med = mediana(r);
+    // un dato disparatado no puede arrastrar toda la ciudad
+    if (med >= 2 && med <= 6) { LANE.porCarril = med; LANE.calibrado = true; }
+  }
+
+  // 2. ancho mediano por clase, con los anchos ya declarados. Va DESPUES,
+  //    porque el ancho por carriles depende del paso anterior.
+  const pool = {}, porCalle = {};
+  for (const el of elements) {
+    const t = el.tags; if (!t || !t.highway) continue;
+    const dec = anchoDeclarado(t, true);
+    if (!dec) continue;
+    (pool[t.highway] = pool[t.highway] || []).push(dec.m);
+    const k = claveDeCalle(t);
+    if (k) (porCalle[k] = porCalle[k] || []).push(dec.m);
+  }
+  for (const [clase, a] of Object.entries(pool))
+    if (a.length >= 3) LANE.porClase[clase] = mediana(a);
+  // Para la propia calle alcanza UN tramo declarado: no es una estadistica,
+  // es el mismo objeto visto en otro pedazo.
+  for (const [k, a] of Object.entries(porCalle)) LANE.porCalle[k] = mediana(a);
+
+  return { muestras: r.length, porCarril: LANE.porCarril,
+           clases: Object.keys(LANE.porClase).length,
+           calles: Object.keys(LANE.porCalle).length };
+}
+
+/** "53 por carriles · 42 por clase" para el HUD. */
+function anchosReport(a) {
+  if (!a || !a.total) return '—';
+  const p = [];
+  if (a.width) p.push(a.width + ' medidos');
+  if (a.lanes) p.push(a.lanes + ' por carriles');
+  if (a.calle) p.push(a.calle + ' por su propia calle');
+  if (a.vecinos) p.push(a.vecinos + ' por la mediana de su clase');
+  if (a.clase) p.push(a.clase + ' por convencion');
+  return p.join(' · ') + (LANE.calibrado
+    ? ' · ' + LANE.porCarril.toFixed(2) + ' m/carril medido' : '');
 }
 
 /**
@@ -1999,7 +2314,6 @@ function classifyArea(t) {
  */
 function classifyLine(t) {
   if (!t.highway) return null;
-  const tagged = parseLength(t.width);
   /**
    * Jerarquía F4maps:
    * La calzada (asfalto) es la superficie principal de circulacion y va POR ENCIMA
@@ -2011,14 +2325,20 @@ function classifyLine(t) {
     bici:     0.160,
     peaton_l: 0.165,
     calzada:  0.200,
-    escalera: 0.210
+    // La escalera estaba en 0,210, por encima del borde de la calzada.
+    // Ahora va con el resto del solado peatonal, debajo de toda cinta.
+    escalera: 0.170
   };
-  const R = (id, width, color, off, casing, grow, opts = {}) => ({
-    id, color, off,
-    width: Number.isFinite(tagged) && tagged > 0 ? clamp(tagged, 1, 45) : width,
-    casing: casing ? { color: casing, grow, off: CASING[id] || 0.155 } : null,
-    ...opts
-  });
+  // `lanes` solo tiene sentido en una calzada: una vereda con lanes=2 no
+  // mide 7 m. Por eso el ancho por carriles se pide explicitamente.
+  const R = (id, width, color, off, casing, grow, opts = {}) => {
+    const a = anchoDeVia(t, width, id === 'calzada');
+    return {
+      id, color, off, width: a.m, anchoDe: a.de,
+      casing: casing ? { color: casing, grow, off: CASING[id] || 0.155 } : null,
+      ...opts
+    };
+  };
 
   switch (t.highway) {
     case 'motorway': case 'trunk': case 'primary':
@@ -2036,8 +2356,12 @@ function classifyLine(t) {
     case 'cycleway':
       return R('bici',      2.2, 0x874e3d, 0.180, 0x543026, 0.4);
     case 'steps': {
-      const w = Number.isFinite(tagged) && tagged > 0 ? clamp(tagged, 1, 45) : 2.5;
-      const st = R('escalera', w, 0xe6e1d5, 0.240, 0x9e9587, 0.4, { isStairs: true });
+      const w = anchoDeVia(t, 2.5, false).m;
+      // 0,190: sobre la vereda (0,175) y el paseo peatonal (0,185), que es
+      // donde una escalera realmente se apoya, y DEBAJO de la calzada
+      // (0,230). Antes estaba en 0,240 y se dibujaba sobre el asfalto:
+      // medido, tapaba 25,8 m2 de calle en este bbox.
+      const st = R('escalera', w, 0xe6e1d5, 0.190, 0x9e9587, 0.4, { isStairs: true });
       const sc = parseInt(t['step_count'], 10);
       st.nosing = {
         count: Number.isFinite(sc) && sc > 1 ? sc : 0,
@@ -2047,13 +2371,107 @@ function classifyLine(t) {
     }
     case 'footway': case 'path': case 'corridor':
       if (t.footway === 'crossing') {
-        // Cruce peatonal estilo cebra sobre el asfalto (off superior a la calzada para pintar la cebra)
+        // Cruce peatonal estilo cebra sobre el asfalto (off superior a la
+        // calzada para pintar la cebra).
+        //
+        // Se probo agregarle una banda continua por debajo de los bastones
+        // para unir las dos veredas: la red peatonal pasaba de 9 pedazos a
+        // los 4 que trae OSM, pero la banda TAPA la calzada, sale mas ancha
+        // que la vereda y de otro gris. La calle no se tapa nunca y el
+        // solado peatonal es de un solo color, asi que se descarto.
         return R('cruce_cebra', 2.8, 0xfafafa, 0.238, null, 0, { isCrossing: true });
       }
       // Caminos y veredas por debajo de la calzada: la calle los tapa al cruzarse
       return R('vereda', 2.0, 0xdcd8cf, 0.175, 0x7c786e, 0.35);
   }
   return null;
+}
+
+/**
+ * BARRERAS: setos, muros y cercos (barrier=*).
+ *
+ * Nada de esto estaba: la consulta a Overpass ni siquiera pedia `barrier`, asi
+ * que los setos recortados de una plaza -- esas formas verdes que se ven en
+ * otros visores -- no llegaban nunca. En el bbox hay 14, entre muros con su
+ * `colour` declarado y setos.
+ *
+ * Todo sale de la etiqueta, para que sirva igual en cualquier ciudad:
+ *   - alto y ancho: los declarados; si no, la mediana de los que SI los
+ *     declaran en ESTA descarga para el mismo tipo; si tampoco hay muestra,
+ *     la convencion del tipo.
+ *   - color: `colour` si viene en hexadecimal; si no, por `material`; si no,
+ *     por tipo.
+ * No hay un solo valor elegido mirando esta ciudad en particular.
+ */
+const BARRERA = {
+  //                  alto  ancho  color     (convenciones, ultimo recurso)
+  hedge:           { h: 1.2, w: 0.8, c: 0x4a7c3f },
+  wall:            { h: 1.6, w: 0.3, c: 0xb9b3a7 },
+  retaining_wall:  { h: 1.2, w: 0.4, c: 0xa8a297 },
+  city_wall:       { h: 3.0, w: 0.8, c: 0xb0aa9e },
+  fence:           { h: 1.5, w: 0.08, c: 0x6b6b6b },
+  guard_rail:      { h: 0.7, w: 0.10, c: 0x9aa0a6 },
+  handrail:        { h: 1.0, w: 0.06, c: 0x9aa0a6 },
+  wire_fence:      { h: 1.5, w: 0.05, c: 0x7a7a7a },
+  hedge_bank:      { h: 1.2, w: 1.0, c: 0x4a7c3f }
+};
+/* Color por material, cuando la barrera no declara `colour`. */
+const BARRERA_MAT = {
+  brick: 0xa2705c, stone: 0xa9a49a, concrete: 0xb5b2ab, metal: 0x8d9298,
+  wood: 0x8a6a45, glass: 0x9fb8c4, hedge: 0x4a7c3f
+};
+
+/** Estilo de una barrera, o null si no es de las que sabemos levantar. */
+function classifyBarrier(t) {
+  if (!t.barrier) return null;
+  const base = BARRERA[t.barrier];
+  if (!base) return null;                     // bollard, gate, kerb, etc.
+  const h = parseLength(t.height), w = parseLength(t.width);
+  let color = null;
+  if (t.colour && HEX.test(String(t.colour).trim())) color = t.colour.trim();
+  else if (t.material && BARRERA_MAT[t.material] !== undefined) color = BARRERA_MAT[t.material];
+  return {
+    tipo: t.barrier,
+    alto:  Number.isFinite(h) && h > 0 ? clamp(h, 0.2, 12) : NaN,
+    ancho: Number.isFinite(w) && w > 0 ? clamp(w, 0.03, 4) : NaN,
+    color: color ?? base.c,
+    // Un barrier con `area=yes` (o multipoligono) no es un muro a lo largo de
+    // una traza: es un MACIZO. Dibujarlo como muro deja una caja abierta por
+    // arriba, que es lo que pasaba con los dos paramentos del Monumento
+    // (way/273548831 y 832, 297 y 329 m2, colour=#E6E4D8).
+    macizo: t.area === 'yes' || t.type === 'multipolygon'
+  };
+}
+
+/**
+ * Completa alto y ancho que la barrera no declara, con la mediana local de su
+ * propio tipo. Solo se usa la muestra si hay al menos tres, para que un dato
+ * suelto no arrastre a todas.
+ */
+function calibrateBarriers(jobs) {
+  const pool = new Map();
+  const anota = (k, v) => { const a = pool.get(k); if (a) a.push(v); else pool.set(k, [v]); };
+  for (const j of jobs) {
+    if (Number.isFinite(j.bs.alto))  anota(j.bs.tipo + '|h', j.bs.alto);
+    if (Number.isFinite(j.bs.ancho)) anota(j.bs.tipo + '|w', j.bs.ancho);
+  }
+  const mediana = k => {
+    const a = pool.get(k);
+    if (!a || a.length < 3) return NaN;
+    const s = [...a].sort((x, y) => x - y);
+    return s[Math.floor(s.length / 2)];
+  };
+  let declarados = 0, estimados = 0;
+  for (const j of jobs) {
+    const b = BARRERA[j.bs.tipo];
+    if (Number.isFinite(j.bs.alto)) declarados++;
+    else { const m = mediana(j.bs.tipo + '|h'); j.bs.alto = Number.isFinite(m) ? m : b.h; estimados++; }
+    if (!Number.isFinite(j.bs.ancho)) {
+      const m = mediana(j.bs.tipo + '|w');
+      j.bs.ancho = Number.isFinite(m) ? m : b.w;
+    }
+  }
+  return { declarados, estimados };
 }
 
 const tess = new TessellateModifier(SURF.maxEdge, 10);
@@ -2138,7 +2556,10 @@ function buildWaterBasins(areaJobs) {
     }
     if (!Number.isFinite(alto)) continue;
 
-    const brocal = alto + 0.12;                    // apenas sobre el solado
+    // La lamina queda a la cota del agua drapeada (AGUA_OFF), no sobre el
+    // terreno pelado: si no, el cuenco tambien quedaba por debajo del cesped.
+    const lamina = alto + AGUA_OFF;
+    const brocal = lamina + CFG.basinWaterDrop;
     const fondo  = brocal - CFG.basinDepth;
     const dentro = insetRing(job.outer, CFG.basinCoping);
     if (!dentro) continue;                         // huella impropia: se drapea
@@ -2169,7 +2590,7 @@ function buildWaterBasins(areaJobs) {
     agua.rotateX(-Math.PI / 2);
     agua.deleteAttribute('uv');
     const mAgua = new THREE.Mesh(agua, matAgua);
-    mAgua.position.y = brocal - CFG.basinWaterDrop;
+    mAgua.position.y = lamina;
     gSurf.add(mAgua);
 
     job.cavado = true;      // ya no se drapea: la lamina la dibuja el cuenco
@@ -2304,6 +2725,189 @@ function ribbonArea(pts, width, off) {
   for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
   geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   return geo;
+}
+
+/**
+ * Prisma de una barrera a lo largo de su traza: dos caras laterales y la tapa.
+ *
+ * Cada poste muestrea el terreno en SU (x,z), de modo que el seto o el muro
+ * acompaña el relieve en vez de cortarlo. La traza se densifica para que en una
+ * curva -- los setos de plaza suelen ser semicirculos -- siga la forma.
+ */
+function barrierPrism(pts, ancho, alto, off = 0.02) {
+  if (!pts || pts.length < 2 || !(ancho > 0) || !(alto > 0)) return null;
+  const hw = ancho / 2;
+
+  // densificado y direcciones
+  const dense = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = dense[dense.length - 1], b = pts[i];
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    const k = Math.max(1, Math.ceil(d / SURF.densify));
+    for (let j = 1; j <= k; j++)
+      dense.push({ x: a.x + (b.x - a.x) * j / k, z: a.z + (b.z - a.z) * j / k });
+  }
+  const n = dense.length;
+  if (n < 2) return null;
+
+  const L = [], R = [];
+  for (let i = 0; i < n; i++) {
+    const a = dense[Math.max(0, i - 1)], b = dense[Math.min(n - 1, i + 1)];
+    let dx = b.x - a.x, dz = b.z - a.z;
+    const l = Math.hypot(dx, dz);
+    if (l < 1e-9) { dx = 1; dz = 0; } else { dx /= l; dz /= l; }
+    const q = dense[i];
+    L.push({ x: q.x - dz * hw, z: q.z + dx * hw });
+    R.push({ x: q.x + dz * hw, z: q.z - dx * hw });
+  }
+
+  const v = [];
+  const tri = (a, b, c) => v.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  const P = (p, y) => ({ x: p.x, y, z: p.z });
+  for (let i = 0; i < n - 1; i++) {
+    const l0 = L[i], l1 = L[i + 1], r0 = R[i], r1 = R[i + 1];
+    const yl0 = pavementY(l0.x, l0.z) + off, yl1 = pavementY(l1.x, l1.z) + off;
+    const yr0 = pavementY(r0.x, r0.z) + off, yr1 = pavementY(r1.x, r1.z) + off;
+    // cara izquierda
+    tri(P(l0, yl0), P(l1, yl1), P(l1, yl1 + alto));
+    tri(P(l0, yl0), P(l1, yl1 + alto), P(l0, yl0 + alto));
+    // cara derecha
+    tri(P(r0, yr0), P(r1, yr1 + alto), P(r1, yr1));
+    tri(P(r0, yr0), P(r0, yr0 + alto), P(r1, yr1 + alto));
+    // tapa
+    tri(P(l0, yl0 + alto), P(l1, yl1 + alto), P(r1, yr1 + alto));
+    tri(P(l0, yl0 + alto), P(r1, yr1 + alto), P(r0, yr0 + alto));
+  }
+  // tapas de punta, para que no se vea hueca
+  const cap = (a, b, ya, yb) => {
+    tri(P(a, ya), P(b, yb), P(b, yb + alto));
+    tri(P(a, ya), P(b, yb + alto), P(a, ya + alto));
+  };
+  cap(R[0], L[0], pavementY(R[0].x, R[0].z) + off, pavementY(L[0].x, L[0].z) + off);
+  cap(L[n-1], R[n-1], pavementY(L[n-1].x, L[n-1].z) + off, pavementY(R[n-1].x, R[n-1].z) + off);
+
+  if (v.length < 9) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Macizo de una barrera mapeada como area: se extruye el poligono entero, de
+ * modo que queda cerrado arriba. La cara superior es horizontal -- un
+ * paramento de hormigon lo es -- y se apoya en la cota mas alta del terreno
+ * bajo su huella, prolongandose hacia abajo para no flotar en la pendiente.
+ */
+function barrierSolid(ring, alto) {
+  if (!ring || ring.length < 3 || !(alto > 0)) return null;
+  let arriba = -Infinity, abajo = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const pasos = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z)));
+    for (let k = 0; k <= pasos; k++) {
+      const y = pavementY(a.x + (b.x - a.x) * k / pasos,
+                          a.z + (b.z - a.z) * k / pasos);
+      if (y > arriba) arriba = y;
+      if (y < abajo)  abajo  = y;
+    }
+  }
+  if (!Number.isFinite(arriba)) return null;
+  const pie = abajo - 0.4;
+  const geo = new THREE.ExtrudeGeometry(shapeFromRings(ring, []), {
+    depth: (arriba + alto) - pie, bevelEnabled: false, curveSegments: 2, steps: 1
+  });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, pie, 0);
+  return geo;
+}
+
+/** Envolvente convexa en XZ (cadena monotona de Andrew). */
+function convexHull(pts) {
+  if (pts.length < 3) return pts.slice();
+  const p = [...pts].sort((a, b) => a.x - b.x || a.z - b.z);
+  const cruz = (o, a, b) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+  const media = ent => {
+    const h = [];
+    for (const q of ent) {
+      while (h.length >= 2 && cruz(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
+      h.push(q);
+    }
+    h.pop();
+    return h;
+  };
+  return media(p).concat(media([...p].reverse()));
+}
+
+/**
+ * EMPALMES: la garganta del cruce.
+ *
+ * Cada way se dibuja como una cinta de ancho constante y con un disco en
+ * cada vertice. Eso tapa bien un camino suelto, pero en un cruce las cintas
+ * llegan con anchos y angulos distintos y entre ellas queda un hueco: al
+ * medirlo sobre la red real aparecen 15 huecos rodeados por 3 o mas vias,
+ * el mayor de 10,9 m2 (6,2 x 12,6 m). Ese hueco es lo que se lee como un
+ * camino "cortado", porque deja ver el pasto entre dos pedazos de asfalto.
+ *
+ * La solucion es la misma que usan los visores que se ven unidos: taparlo
+ * con un poligono propio. Se toma, de cada rama que llega al nodo, el par
+ * de puntos de sus bordes a la distancia del radio del cruce, y se cierra
+ * la envolvente convexa de todos ellos. El resultado no se pasa del cruce
+ * -- no puede: esta acotado por ese radio -- y se funde con las cintas
+ * porque va en la MISMA capa, a la misma cota.
+ *
+ * Los nodos se detectan por coordenada, no por id: asi funciona igual con
+ * los datos de Overpass que con los del respaldo de la API de OSM, que no
+ * trae la lista de nodos.
+ */
+const REJILLA_NODO = 0.05;   // 5 cm: dos vertices del mismo nodo coinciden
+
+/** Ramas que salen de cada nodo compartido, agrupadas por capa. */
+function junctionBranches(lineJobs) {
+  const nodos = new Map();
+  const clave = q => Math.round(q.x / REJILLA_NODO) + '|' +
+                     Math.round(q.z / REJILLA_NODO);
+  for (const l of lineJobs) {
+    if (l.ls.isStairs || l.ls.isCrossing || l.pts.length < 2) continue;
+    for (let i = 0; i < l.pts.length; i++) {
+      const k = l.ls.id + '#' + clave(l.pts[i]);
+      let e = nodos.get(k);
+      if (!e) nodos.set(k, e = { p: l.pts[i], ls: l.ls, vias: new Set(), ramas: [] });
+      e.vias.add(l);
+      // una rama por cada vecino: un nodo en medio de la via tiene dos
+      for (const j of [i - 1, i + 1]) {
+        const q = l.pts[j];
+        if (!q) continue;
+        const dx = q.x - e.p.x, dz = q.z - e.p.z, L = Math.hypot(dx, dz);
+        if (L < 0.05) continue;
+        e.ramas.push({ dx: dx / L, dz: dz / L, largo: L, hw: l.ls.width / 2,
+                       grow: l.ls.casing ? l.ls.casing.grow : 0 });
+      }
+    }
+  }
+  // Solo interesa donde se juntan vias DISTINTAS: un vertice cualquiera de
+  // una via ya lo tapa su propio disco.
+  return [...nodos.values()].filter(e => e.vias.size >= 2 && e.ramas.length >= 2);
+}
+
+/**
+ * Poligono que tapa un cruce. `extra` ensancha cada rama, para el borde.
+ * Devuelve null si no agrega nada (ramas alineadas, o cruce degenerado).
+ */
+function junctionPatch(nodo, extra = 0) {
+  const R = Math.max(...nodo.ramas.map(r => r.hw)) + extra;
+  if (!(R > 0)) return null;
+  const pts = [];
+  for (const r of nodo.ramas) {
+    // nunca mas alla de donde llega la rama: un tramo corto no se estira
+    const d = Math.min(R, r.largo);
+    const hw = r.hw + extra;
+    const px = nodo.p.x + r.dx * d, pz = nodo.p.z + r.dz * d;
+    const nx = -r.dz * hw, nz = r.dx * hw;
+    pts.push({ x: px + nx, z: pz + nz }, { x: px - nx, z: pz - nz });
+  }
+  const h = convexHull(pts);
+  return h.length >= 3 ? h : null;
 }
 
 /**
@@ -2604,13 +3208,23 @@ function pointInRing(px, pz, ring) {
 function processOSM(elements) {
   const stats = { bld: 0, part: 0, surf: 0, layers: 0, jobs: null,
                   footprints: [], stepLines: [] };
+  // Antes de clasificar nada: los metros por carril se miden con esta
+  // descarga, no se heredan de la anterior ni de otra ciudad.
+  calibrateLanes(elements);
   const footprints = [];   // { outer, holes, tags, kind }
-  const areaJobs = [], lineJobs = [];
+  const areaJobs = [], lineJobs = [], barrierJobs = [];
 
   for (const el of elements) {
     const tags = el.tags || {};
 
     if (el.type === 'way' && el.geometry) {
+      // Las barreras se resuelven antes: un seto puede venir como anillo
+      // cerrado y no es ni un parque ni una calle, es un volumen bajo.
+      const bs = classifyBarrier(tags);
+      if (bs && el.geometry.length >= 2) {
+        barrierJobs.push({ pts: lineFromGeometry(el.geometry), bs });
+        continue;
+      }
       const g0 = el.geometry[0], gN = el.geometry[el.geometry.length - 1];
       const closed = el.geometry.length > 3 &&
                      Math.abs(g0.lat - gN.lat) < 1e-9 && Math.abs(g0.lon - gN.lon) < 1e-9;
@@ -2721,7 +3335,16 @@ function processOSM(elements) {
     if (f.kind === 'part') stats.part++; else stats.bld++;
   }
 
-  stats.jobs = { areaJobs, lineJobs };
+  // De donde salio el ancho de cada calzada, para poder mirarlo en el HUD.
+  stats.anchos = { total: 0, width: 0, lanes: 0, calle: 0, vecinos: 0, clase: 0 };
+  for (const l of lineJobs) {
+    if (l.ls.id !== 'calzada') continue;
+    stats.anchos.total++; stats.anchos[l.ls.anchoDe]++;
+  }
+
+  stats.barreras = calibrateBarriers(barrierJobs);
+  stats.barreras.total = barrierJobs.length;
+  stats.jobs = { areaJobs, lineJobs, barrierJobs };
   stats.footprints = visible.filter(f => f.kind === 'building' || f.kind === 'part');
   stats.stepLines  = lineJobs.filter(l => l.ls.nosing);
   return stats;
@@ -2729,13 +3352,32 @@ function processOSM(elements) {
 
 /** Construye todas las capas de superficie acumuladas con jerarquía F4maps. */
 function buildSurfaces(jobs) {
-  if (!jobs) return { count: 0, layers: 0 };
+  // Mismo contrato que la salida normal: sin esto, la escena de respaldo
+  // (que no trae jobs) reventaba en main al mapear surf.report.
+  if (!jobs) return { count: 0, layers: 0, cuencos: 0, empalmes: 0,
+                      report: [], failed: [] };
   const sb = new SurfaceBuilder();
   const cuencos = buildWaterBasins(jobs.areaJobs);
+
+  // Barreras: setos, muros y cercos. Una capa por color, de modo que un muro
+  // que declara su `colour` no se funde con el resto.
+  for (const b of jobs.barrierJobs || []) {
+    const anillo = b.bs.macizo && b.pts.length >= 4 ? b.pts.slice(0, -1) : null;
+    const geo = anillo ? barrierSolid(anillo, b.bs.alto)
+                       : barrierPrism(b.pts, b.bs.ancho, b.bs.alto);
+    if (!geo) continue;
+    const col = typeof b.bs.color === 'string' ? b.bs.color : b.bs.color;
+    sb.add({ id: 'barrera·' + b.bs.tipo + '·' + col, color: col,
+             rough: b.bs.tipo === 'hedge' ? 0.95 : 0.85, quiet: true }, geo);
+  }
   for (const a of jobs.areaJobs) {
     if (a.cavado) continue;                  // lo dibuja el cuenco, no el solado
     sb.add(a.st, drapedArea(a.outer, a.holes, a.st.off));
   }
+
+  // Los cruces se resuelven una sola vez y sirven para el borde y para el
+  // relleno: el mismo poligono, con el borde un poco mas ancho.
+  const cruces = junctionBranches(jobs.lineJobs);
 
   // 1. Bordes/casings: solo para calzadas, veredas y sendas comunes (NUNCA escaleras ni cebras)
   for (const l of jobs.lineJobs) {
@@ -2747,6 +3389,13 @@ function buildSurfaces(jobs) {
     sb.add(estilo, ribbonArea(l.pts, l.ls.width + c.grow, c.off));
     sb.add(estilo, jointDiscs(l.pts, l.ls.width + c.grow, c.off));
   }
+  for (const n of cruces) {
+    const c = n.ls.casing;
+    if (!c) continue;
+    const anillo = junctionPatch(n, c.grow / 2);
+    if (anillo) sb.add({ id: n.ls.id + '·borde', color: c.color, off: c.off,
+                         quiet: true }, drapedArea(anillo, [], c.off));
+  }
 
   // 2. Relleno principal de calzadas, veredas y paseos (no escaleras ni cebras)
   for (const l of jobs.lineJobs) {
@@ -2754,6 +3403,13 @@ function buildSurfaces(jobs) {
     if (l.ls.isStairs || l.ls.isCrossing) continue;
     sb.add(l.ls, ribbonArea(l.pts, l.ls.width, l.ls.off));
     sb.add(l.ls, jointDiscs(l.pts, l.ls.width, l.ls.off));
+  }
+  let empalmes = 0;
+  for (const n of cruces) {
+    const anillo = junctionPatch(n, 0);
+    if (!anillo) continue;
+    const geo = drapedArea(anillo, [], n.ls.off);
+    if (geo) { sb.add(n.ls, geo); empalmes++; }
   }
 
   // 3. Escaleras rectas (stairwayArea) sin discos circulares y con peldaños ortogonales
@@ -2786,7 +3442,8 @@ function buildSurfaces(jobs) {
   }
 
   const layers = sb.build(gSurf);
-  return { count: sb.count, layers, cuencos, report: sb.report, failed: sb.failed };
+  return { count: sb.count, layers, cuencos, empalmes,
+           report: sb.report, failed: sb.failed };
 }
 
 /* --------------- 10bis. SEDIMENTO Y MALEZA (post-apocaliptico) ------------ */
@@ -2928,7 +3585,9 @@ function sedimentAt(x, z, cleanY) {
  * sedimentAt() para colocarlos solo donde la capa es espesa.
  */
 function applyRubble() {
-  if (!terrainMesh || !terrainCleanY) return { raised: 0, max: 0 };
+  // total y escTapada tambien: main los divide y los formatea.
+  if (!terrainMesh || !terrainCleanY)
+    return { raised: 0, max: 0, total: 0, escTapada: 0 };
   const pos = terrainMesh.geometry.attributes.position;
   const ox = terrainMesh.position.x, oz = terrainMesh.position.z;
   const col = new Float32Array(pos.count * 3);
@@ -3205,6 +3864,8 @@ function rebuildAll() {
   ui.stat('s-bld',    stats.bld);
   ui.stat('s-part',   stats.part);
   ui.stat('s-alturas', alturasReport(stats.alturas));
+  ui.stat('s-bar',    barrerasReport(stats.barreras));
+  ui.stat('s-anchos', anchosReport(stats.anchos));
   ui.stat('s-roof',   roofReport());
   ui.stat('s-surf',   surf.count + (surf.cuencos ? ' · ' + surf.cuencos + ' cuencos de agua' : '') +
                       (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
@@ -3219,11 +3880,16 @@ function rebuildAll() {
 
 /* ------------------------------- 12. CAMARA ------------------------------- */
 
-const MONUMENT = { lon: -60.63036, lat: -32.94764 };   // Monumento a la Bandera
+/* Punto al que mira la camara al arrancar y con la tecla R. Arranca en el
+   Monumento a la Bandera y se mueve al centro de la zona que se busque. */
+const FOCO = { lon: -60.63036, lat: -32.94764,
+               nombre: "Monumento a la Bandera — Rosario" };
+/* La zona de arranque sale del mismo calculo que cualquier otra. */
+CFG.bbox = bboxDesde(FOCO.lon, FOCO.lat, CFG.zona.lado);
 let focusPoint = new THREE.Vector3();
 
-function frameMonument(distance = 420) {
-  const p = World.toWorld(MONUMENT.lon, MONUMENT.lat);
+function frameFocus(distance = 420) {
+  const p = World.toWorld(FOCO.lon, FOCO.lat);
   const y = groundAt(p.x, p.z);
   focusPoint.set(p.x, y + 25, p.z);
   controls.target.copy(focusPoint);
@@ -3231,15 +3897,109 @@ function frameMonument(distance = 420) {
   camera.updateProjectionMatrix();
   controls.update();
 
-  // reencuadrar la camara de sombras sobre el monumento
+  // reencuadrar la camara de sombras sobre el foco de la zona
   sun.target.position.copy(focusPoint);
   sun.position.copy(focusPoint).add(new THREE.Vector3(-420, 620, 380));
   sun.target.updateMatrixWorld();
 }
 
+/* -------------------------------- 12bis. ZONA ----------------------------- */
+
+/**
+ * bbox cuadrado de LADO metros centrado en (lon,lat). En metros y no en
+ * grados para que la zona mida lo mismo en Rosario que en Reikiavik: un
+ * grado de longitud pasa de 111 km en el ecuador a 56 km a 60 de latitud.
+ */
+function bboxDesde(lon, lat, lado) {
+  const dLat = (lado / 2) / 110540;
+  const dLon = (lado / 2) / (Math.cos(lat * Math.PI / 180) * 111320);
+  return { s: lat - dLat, n: lat + dLat, w: lon - dLon, e: lon + dLon };
+}
+
+/** Lado en metros del bbox que devuelve el geocodificador. */
+function ladoDe(bb, lat) {
+  const alto  = (bb.n - bb.s) * 110540;
+  const ancho = (bb.e - bb.w) * Math.cos(lat * Math.PI / 180) * 111320;
+  return Math.max(alto, ancho);
+}
+
+/**
+ * Busca un lugar por nombre. Nominatim es el geocodificador de OSM: sirve
+ * cualquier ciudad, pueblo, plaza o direccion del mundo, asi que la zona no
+ * depende de ninguna lista propia.
+ *
+ * Su politica de uso pide un solo pedido por segundo y un User-Agent; el
+ * navegador no deja fijar la cabecera, pero una busqueda la dispara una
+ * persona apretando un boton, muy por debajo de ese limite.
+ */
+async function buscarLugar(q) {
+  const u = CFG.geocoder + '?format=jsonv2&limit=1&addressdetails=0&q=' +
+            encodeURIComponent(q);
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), CFG.fetchTimeout);
+  try {
+    const r = await fetch(u, { signal: ctl.signal });
+    if (!r.ok) throw new Error('geocodificador HTTP ' + r.status);
+    const j = await r.json();
+    if (!j.length) return null;
+    const h = j[0];
+    const lon = parseFloat(h.lon), lat = parseFloat(h.lat);
+    // boundingbox llega como [sur, norte, oeste, este], en texto
+    const b = (h.boundingbox || []).map(parseFloat);
+    const bb = b.length === 4 && b.every(Number.isFinite)
+      ? { s: b[0], n: b[1], w: b[2], e: b[3] } : null;
+    return { lon, lat, bb, nombre: h.display_name || q };
+  } finally { clearTimeout(t); }
+}
+
+/**
+ * Deja la escena vacia y lista para reconstruirse en otra zona. Todo lo que
+ * main() crea tiene que soltarse aca, o cada cambio de zona deja colgada en
+ * la GPU la geometria de la anterior.
+ */
+function resetEscena() {
+  gTerrain.traverse(o => { o.userData && o.userData.tex && o.userData.tex.dispose(); });
+  clearGroup(gTerrain, true);
+  clearGroup(gBuild);
+  clearGroup(gSurf, true);
+  clearGroup(gGrass, true);
+  terrainMesh = null; terrainBaseY = null; terrainCleanY = null;
+  grassMesh = null; grassSeed = null;
+  TG.ready = false;
+  dem = null;
+  window.__OSM = null;
+  STITCH.open = 0;
+  for (const k of Object.keys(ROOF_STATS)) delete ROOF_STATS[k];
+}
+
+/** Reconstruye todo centrado en (lon,lat) con el lado elegido en el HUD. */
+let cambiandoZona = false;
+async function irAZona(lon, lat, nombre, lado = CFG.zona.lado) {
+  if (cambiandoZona) return;
+  cambiandoZona = true;
+  const antes = { bbox: CFG.bbox, foco: { ...FOCO } };
+  try {
+    CFG.bbox = bboxDesde(lon, lat, lado);
+    FOCO.lon = lon; FOCO.lat = lat; FOCO.nombre = nombre;
+    document.getElementById('h-zona').textContent = nombre;
+    document.getElementById('splash-zona').textContent = nombre;
+    document.title = nombre;
+    resetEscena();
+    await main();
+  } catch (e) {
+    console.error(e);
+    // volver al estado anterior deja la escena vacia igual: es mejor decirlo
+    // que fingir que sigue en pie.
+    CFG.bbox = antes.bbox; Object.assign(FOCO, antes.foco);
+    ui.set('no se pudo cargar la zona: ' + e.message, 'err');
+    ui.ocultarSplash();
+  } finally { cambiandoZona = false; }
+}
+
 /* --------------------------------- 13. MAIN ------------------------------- */
 
 async function main() {
+  ui.mostrarSplash();
   CFG.dem.relief = 1 - parseFloat(document.getElementById('r-flat').value) / 100;
   CFG.rubble.amount = parseFloat(document.getElementById('r-rub').value) / 100;
   CFG.grass.density = parseFloat(document.getElementById('r-gd').value) / 100;
@@ -3294,7 +4054,7 @@ async function main() {
   buildTerrain(rRange, tex);
   ui.prog(0.7);
 
-  frameMonument();
+  frameFocus();
   render();   // primer cuadro: ya se ve el terreno mientras llega Overpass
 
   // --- 13.5 vectores OSM ----------------------------------------------------
@@ -3332,18 +4092,20 @@ async function main() {
     (surf.failed.length ? ' <span style="color:var(--err)">falló: ' + surf.failed.join(', ') + '</span>' : '');
   console.info('superficies:', surf.count, 'en', surf.layers, 'capas',
                '| anillos descartados por no cerrar:', STITCH.open,
-               '| solado tapado', (100 * rub.raised / rub.total).toFixed(0) + '%',
+               '| solado tapado', pct(rub.raised, rub.total) + '%',
                '| escaleras tapadas', (100 * rub.escTapada).toFixed(0) + '%',
                '| maximo', rub.max.toFixed(2), 'm');
 
   ui.stat('s-bld',    stats.bld);
   ui.stat('s-part',   stats.part);
   ui.stat('s-alturas', alturasReport(stats.alturas));
+  ui.stat('s-bar',    barrerasReport(stats.barreras));
+  ui.stat('s-anchos', anchosReport(stats.anchos));
   ui.stat('s-roof',   roofReport());
   ui.stat('s-surf',   stats.surf + (STITCH.open ? ' (' + STITCH.open + ' sin cerrar)' : ''));
   ui.stat('s-grass',  gr.n.toLocaleString('es-AR') + ' matas · ' +
                       (gr.tris / 1000).toFixed(0) + 'k tri · 1 draw call');
-  ui.stat('s-rub',    (100 * rub.raised / rub.total).toFixed(0) + '% del solado · ' +
+  ui.stat('s-rub',    pct(rub.raised, rub.total) + '% del solado · ' +
                       (100 * rub.escTapada).toFixed(0) + '% de escaleras · hasta ' +
                       rub.max.toFixed(2) + ' m');
   if (!/DEMO|SINTETICO/.test(source + demLabel))
@@ -3351,9 +4113,12 @@ async function main() {
   else
     ui.set(source, 'warn');
 
+  // La exageracion vive en el slider, no en la escena: al rehacer el
+  // terreno hay que volver a aplicarla o la zona nueva sale plana.
+  applyExaggeration(parseFloat(document.getElementById('r-exag').value));
+
   ui.prog(1);
-  ui.splash.style.opacity = '0';
-  setTimeout(() => ui.splash.remove(), 600);
+  ui.ocultarSplash();
 }
 
 /* ------------------------------ 14. UI / EVENTOS -------------------------- */
@@ -3426,9 +4191,55 @@ rExag.oninput = () => {
   applyExaggeration(k);
 };
 
+/* ---- buscador de zona ---------------------------------------------------
+   El lado se lee al momento de buscar, asi que mover el slider no dispara
+   una reconstruccion por pixel arrastrado. Con el campo vacio, el boton
+   rehace la zona actual con el lado nuevo. */
+const qZona = document.getElementById('q-zona');
+const bZona = document.getElementById('b-zona');
+const rLado = document.getElementById('r-lado');
+
+rLado.oninput = () => {
+  CFG.zona.lado = parseInt(rLado.value, 10);
+  document.getElementById('r-lado-v').textContent = CFG.zona.lado + ' m';
+};
+
+async function irALoBuscado() {
+  if (cambiandoZona) return;
+  const q = qZona.value.trim();
+  bZona.disabled = true;
+  try {
+    if (!q) {                       // sin texto: misma zona, otro lado
+      await irAZona(FOCO.lon, FOCO.lat, FOCO.nombre);
+      return;
+    }
+    ui.set('buscando "' + q + '" …');
+    const h = await buscarLugar(q);
+    if (!h) { ui.set('sin resultados para "' + q + '"', 'warn'); return; }
+    // El nombre completo de Nominatim es una direccion postal entera; en el
+    // titulo entra la parte util.
+    const corto = h.nombre.split(',').slice(0, 2).join(',').trim();
+    // Un lugar puntual (un monumento) trae un bbox de metros y una ciudad
+    // uno de decenas de kilometros: los dos se llevan al rango util.
+    const lado = h.bb
+      ? clamp(Math.round(ladoDe(h.bb, h.lat)), CFG.zona.ladoMin, CFG.zona.ladoMax)
+      : CFG.zona.lado;
+    rLado.value = CFG.zona.lado = lado;
+    document.getElementById('r-lado-v').textContent = lado + ' m';
+    await irAZona(h.lon, h.lat, corto, lado);
+  } catch (e) {
+    console.error(e);
+    ui.set('no se pudo buscar: ' + e.message, 'err');
+  } finally { bZona.disabled = false; }
+}
+bZona.onclick = irALoBuscado;
+qZona.onkeydown = ev => { if (ev.key === 'Enter') irALoBuscado(); };
+
 addEventListener('keydown', ev => {
+  // con el foco en el buscador, las teclas son texto, no atajos
+  if (ev.target instanceof HTMLInputElement) return;
   const k = ev.key.toLowerCase();
-  if (k === 'r') frameMonument();
+  if (k === 'r') frameFocus();
   if (k === 'w') {
     const c = document.getElementById('c-wire');
     c.checked = !c.checked; c.onchange({ target: c });
