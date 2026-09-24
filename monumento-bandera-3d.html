@@ -106,6 +106,8 @@
   <label class="chk"><input type="checkbox" id="c-raster"> Ortofoto / mapa sobre el terreno</label>
   <label class="chk"><input type="checkbox" id="c-wire"> Malla del terreno (wireframe)</label>
   <label class="chk"><input type="checkbox" id="c-bld" checked> Edificios</label>
+  <label class="chk"><input type="checkbox" id="c-trees" checked> Árboles y palmeras 3D</label>
+  <label class="chk"><input type="checkbox" id="c-props" checked> Mobiliario y vehículos</label>
   <label class="chk"><input type="checkbox" id="c-grass" checked> Maleza</label>
   <div class="rng"><span>Maleza</span>
     <input type="range" id="r-gd" min="0" max="30" step="1" value="9">
@@ -116,6 +118,9 @@
   <div class="rng"><span>Sedimento</span>
     <input type="range" id="r-rub" min="0" max="250" step="5" value="100">
     <b id="r-rub-v">1.00 m</b></div>
+  <div class="rng"><span>Suelo limpio</span>
+    <input type="color" id="r-cleancolor" value="#d8d5d0">
+    <b id="r-cleancolor-v">#d8d5d0</b></div>
   <div class="rng"><span>Aplanado</span>
     <input type="range" id="r-flat" min="0" max="100" step="5" value="65">
     <b id="r-flat-v">65%</b></div>
@@ -125,16 +130,16 @@
 </div>
 
 <div id="legend" class="panel">
-  <div><span class="sw" style="background:#dedad0"></span>base / basamento (&lt; 18 m, travertino)</div>
+  <div><span class="sw" style="background:#e4e4e4"></span>base / basamento (&lt; 18 m, travertino)</div>
   <div><span class="sw" style="background:#e6e2d8"></span>cuerpo escalonado (18–40 m, travertino)</div>
   <div><span class="sw" style="background:#efebe2"></span>torre / remate (&gt; 40 m, travertino)</div>
   <div><span class="sw" style="background:#b5b9be"></span>edificio genérico OSM</div>
-  <div><span class="sw" style="background:#e6e1d5"></span>escalera (highway=steps) recta sin discos</div>
-  <div><span class="sw" style="background:#70603f"></span>sedimento · <span class="sw" style="background:#546f38"></span>maleza — tapan el solado donde se acumulan</div>
+  <div><span class="sw" style="background:#cec6b4"></span>escalera (highway=steps) recta sin discos</div>
+  <div><span class="sw" style="background:#8c704d"></span>sedimento · <span class="sw" style="background:#61853d"></span>maleza — tapan el solado donde se acumulan</div>
   <div><span class="sw" style="background:#4a5c22"></span>matas instanciadas, sembradas sobre el sedimento</div>
-  <div><span class="sw" style="background:#6ea344"></span>parque / césped · <span class="sw" style="background:#2b6c99"></span>agua · <span class="sw" style="background:#a89474"></span>muelle</div>
-  <div><span class="sw" style="background:#4a7c3f"></span>seto · <span class="sw" style="background:#b9b3a7"></span>muro · <span class="sw" style="background:#6b6b6b"></span>cerco — alto y color de OSM, o estimados de la zona</div>
-  <div><span class="sw" style="background:#3c3f46"></span>calzada (asfalto) · <span class="sw" style="background:#dcd8cf"></span>vereda · <span class="sw" style="background:#f5f5f5"></span>marcas/cebra</div>
+  <div><span class="sw" style="background:#a8b36b"></span>parque / césped · <span class="sw" style="background:#6697a9"></span>agua · <span class="sw" style="background:#9e8868"></span>muelle</div>
+  <div><span class="sw" style="background:#4a7a3a"></span>seto · <span class="sw" style="background:#b9b3a7"></span>muro · <span class="sw" style="background:#6b6b6b"></span>cerco — alto y color de OSM, o estimados de la zona</div>
+  <div><span class="sw" style="background:#8e8e8e"></span>calzada (asfalto) · <span class="sw" style="background:#e4e4e4"></span>vereda · <span class="sw" style="background:#f2f2f2"></span>marcas/cebra</div>
   <div><span class="sw" style="background:linear-gradient(135deg,#E6E4D8,#8fa1b5)"></span>color real de OSM (<code>building:colour</code>)</div>
 </div>
 </div>
@@ -299,6 +304,7 @@ const CFG = {
   // supera el espesor de la vereda, el suelo se la traga; donde no llega, la
   // calle asoma. El tapado sale de esa diferencia, no de recortar geometria.
   rubble: {
+    cleanColor: '#d8d5d0', // color del solado sin sedimento (gris concreto)
     amount:     1.00,  // profundidad maxima de sedimento, en metros
     patchScale: 26,    // tamano de los claros y los montones (m)
     octaves:    4,
@@ -681,8 +687,8 @@ renderer.toneMappingExposure = 1.05;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9fc3e8);
-scene.fog = new THREE.Fog(0x9fc3e8, 1400, 4200);
+scene.background = new THREE.Color(0xb8d4e8);
+scene.fog = new THREE.Fog(0xb8d4e8, 1200, 3800);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 20000);
 
@@ -707,14 +713,228 @@ sun.shadow.normalBias = 0.5;
   c.updateProjectionMatrix();
 }
 scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(0xd4e7ff, 0x68705c, 1.05));
+scene.add(new THREE.HemisphereLight(0xd4e7ff, 0x8a7a60, 1.05));
 scene.add(new THREE.AmbientLight(0xffffff, 0.30));
 
 // Grupos para poder alternar visibilidad desde el HUD
 const gTerrain = new THREE.Group();
 const gSurf    = new THREE.Group();   // parques, agua, calzadas, veredas
 const gBuild   = new THREE.Group();
-scene.add(gTerrain, gSurf, gBuild);
+const gTrees   = new THREE.Group();   // arboledas, palmeras y coníferas 3D
+const gProps   = new THREE.Group();   // fuentes, farolas y vehículos
+scene.add(gTerrain, gSurf, gBuild, gTrees, gProps);
+
+const fountainJets = [];
+
+/* ---- 4bis. TEXTURAS PROCEDURALES HIPERREALISTAS PARA SUPERFICIES ---- */
+const TEX = (function() {
+  function makeGrass() {
+    // Textura de pasto hiperrealista via FBM multi-octava suavizado
+    // — sin hash2 pixel-a-pixel que produce ruido blanco pixelado —
+    const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(S, S);
+    // Escala: cada "tile" representa ~4m de terreno real => S pixeles = 4m
+    // Con repeat.set(0.06) el tile se repite cada ~67m, dando textura fina
+    const SCALE = S / 4.0;  // pixeles por metro dentro del tile
+
+    // Pre-computar FBM a resolucion 1/4 y bilinear-upscale => suavidad garantizada
+    const LOW = 128;
+    const fbmBuf = new Float32Array(LOW * LOW);
+    for (let j = 0; j < LOW; j++) for (let k = 0; k < LOW; k++) {
+      const px = k / LOW * 8.0, pz = j / LOW * 8.0;  // 8 unidades de ruido
+      // Macro: manchones grandes de tono claro/oscuro
+      const macro = valueNoise(px * 0.4, pz * 0.4, 200);
+      // Meso: grupos de cesped
+      const meso  = valueNoise(px * 1.2, pz * 1.2, 317) * 0.5 +
+                    valueNoise(px * 2.1, pz * 2.1, 431) * 0.3;
+      // Micro: briznas
+      const micro = valueNoise(px * 4.5, pz * 4.5, 619) * 0.2;
+      fbmBuf[j * LOW + k] = macro * 0.45 + meso * 0.45 + micro * 0.10;
+    }
+
+    // Bilinear upscale LOW→S y mapeo de color
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      // Coordenadas en fbmBuf
+      const fx = (x / S) * (LOW - 1), fz = (y / S) * (LOW - 1);
+      const ix = fx | 0, iz = fz | 0;
+      const ux = fx - ix, uz = fz - iz;
+      const ix1 = Math.min(ix + 1, LOW - 1), iz1 = Math.min(iz + 1, LOW - 1);
+      const v = fbmBuf[iz  * LOW + ix ] * (1-ux)*(1-uz)
+              + fbmBuf[iz  * LOW + ix1] * ux    *(1-uz)
+              + fbmBuf[iz1 * LOW + ix ] * (1-ux)* uz
+              + fbmBuf[iz1 * LOW + ix1] * ux    * uz;
+
+      // Paleta: verde oscuro (0x3a5c2a) <-> verde claro (0x6a8c42)
+      // F4maps usa tonos verdes apagados con algo de amarillo en los claros
+      const dark  = [58,  92, 42];   // #3a5c2a  verde oscuro musgo
+      const mid   = [82, 112, 54];   // #527036  verde medio
+      const light = [112,140, 74];   // #708c4a  verde claro con amarillo
+      let r, g, b;
+      if (v < 0.45) {
+        const t = v / 0.45;
+        r = dark[0]  + (mid[0]  - dark[0])  * t;
+        g = dark[1]  + (mid[1]  - dark[1])  * t;
+        b = dark[2]  + (mid[2]  - dark[2])  * t;
+      } else {
+        const t = (v - 0.45) / 0.55;
+        r = mid[0]  + (light[0]  - mid[0])  * t;
+        g = mid[1]  + (light[1]  - mid[1])  * t;
+        b = mid[2]  + (light[2]  - mid[2])  * t;
+      }
+      // Brizna fina: micro-ruido en luminancia sin amplificar aliasing
+      const grain = (hash2(x >> 1, y >> 1, 1337) - 0.5) * 10;
+      img.data[i]   = Math.min(255, Math.max(0, r + grain));
+      img.data[i+1] = Math.min(255, Math.max(0, g + grain));
+      img.data[i+2] = Math.min(255, Math.max(0, b + grain * 0.5));
+      img.data[i+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    // Blur suave con shadowBlur para eliminar resto de aliasing
+    const c2 = document.createElement('canvas'); c2.width = c2.height = S;
+    const ctx2 = c2.getContext('2d');
+    ctx2.filter = 'blur(0.8px)';
+    ctx2.drawImage(c, 0, 0);
+    const t = new THREE.CanvasTexture(c2);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.repeat.set(0.06, 0.06);  // tile cada ~67m de mundo => detalle fino
+    return t;
+  }
+
+  function makeGround() {
+    // Textura de tierra/suelo desnudo: tonos marrones realistas con FBM
+    const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(S, S);
+    const LOW = 128;
+    const fbmBuf = new Float32Array(LOW * LOW);
+    for (let j = 0; j < LOW; j++) for (let k = 0; k < LOW; k++) {
+      const px = k / LOW * 6.0, pz = j / LOW * 6.0;
+      const macro = valueNoise(px * 0.5, pz * 0.5, 811);
+      const meso  = valueNoise(px * 1.8, pz * 1.8, 953) * 0.5;
+      const micro = valueNoise(px * 4.0, pz * 4.0, 1093) * 0.2;
+      fbmBuf[j * LOW + k] = macro * 0.5 + meso * 0.35 + micro * 0.15;
+    }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      const fx = (x / S) * (LOW-1), fz = (y / S) * (LOW-1);
+      const ix = fx|0, iz = fz|0;
+      const ux = fx-ix, uz = fz-iz;
+      const ix1 = Math.min(ix+1,LOW-1), iz1 = Math.min(iz+1,LOW-1);
+      const v = fbmBuf[iz *LOW+ix ]*(1-ux)*(1-uz)
+              + fbmBuf[iz *LOW+ix1]*ux    *(1-uz)
+              + fbmBuf[iz1*LOW+ix ]*(1-ux)*uz
+              + fbmBuf[iz1*LOW+ix1]*ux    *uz;
+      // Paleta tierra: marrón oscuro <-> beige claro
+      // similar al suelo de parque que se ve en F4maps
+      const dark  = [90,  68, 45];   // tierra oscura húmeda
+      const mid   = [130, 100, 68];  // tierra seca media
+      const light = [168, 138, 100]; // tierra clara / polvo
+      let r, g, b;
+      if (v < 0.40) {
+        const t = v / 0.40;
+        r = dark[0] + (mid[0]-dark[0])*t;
+        g = dark[1] + (mid[1]-dark[1])*t;
+        b = dark[2] + (mid[2]-dark[2])*t;
+      } else {
+        const t = (v-0.40)/0.60;
+        r = mid[0] + (light[0]-mid[0])*t;
+        g = mid[1] + (light[1]-mid[1])*t;
+        b = mid[2] + (light[2]-mid[2])*t;
+      }
+      const grain = (hash2(x>>1, y>>1, 7331) - 0.5) * 12;
+      img.data[i]   = Math.min(255, Math.max(0, r + grain));
+      img.data[i+1] = Math.min(255, Math.max(0, g + grain * 0.9));
+      img.data[i+2] = Math.min(255, Math.max(0, b + grain * 0.7));
+      img.data[i+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const c2 = document.createElement('canvas'); c2.width = c2.height = S;
+    const ctx2 = c2.getContext('2d');
+    ctx2.filter = 'blur(0.6px)';
+    ctx2.drawImage(c, 0, 0);
+    const t = new THREE.CanvasTexture(c2);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.repeat.set(0.05, 0.05);
+    return t;
+  }
+
+  function makePaving() {
+    const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(S, S);
+    const ts = 32;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      const row = (y / ts) | 0;
+      const shift = (row % 2) ? (ts / 2) : 0;
+      const col = ((x + shift) / ts) | 0;
+      const lx = (x + shift) % ts, ly = y % ts;
+      const isJoint = lx <= 1 || ly <= 1;
+      const tileNoise = (hash2(col, row, 331) - 0.5) * 0.18;
+      const stoneGrain = (hash2(x, y, 941) - 0.5) * 0.12;
+      let lum = 228 * (1.0 + tileNoise + stoneGrain);
+      if (isJoint) lum *= 0.68;
+      const val = Math.min(255, Math.max(0, lum | 0));
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = val;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.repeat.set(0.35, 0.35);
+    return t;
+  }
+
+  function makeAsphalt() {
+    const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(S, S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      const g1 = hash2(x, y, 107);
+      const g2 = hash2(x >> 1, y >> 1, 419);
+      const noise = (g1 * 0.6 + g2 * 0.4 - 0.5) * 0.28;
+      const val = Math.min(255, Math.max(0, 226 * (1.0 + noise) | 0));
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = val;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.repeat.set(0.22, 0.22);
+    return t;
+  }
+
+  function makeWaterNormal() {
+    const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(S, S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      const u = x / S * Math.PI * 4, v = y / S * Math.PI * 4;
+      const nx = Math.sin(u * 1.5) * 0.35 + Math.sin(u * 2.5 + v * 1.5) * 0.25;
+      const ny = Math.cos(v * 1.5) * 0.35 + Math.cos(v * 2.5 - u * 1.5) * 0.25;
+      img.data[i]     = ((nx * 0.5 + 0.5) * 255) | 0;
+      img.data[i + 1] = ((ny * 0.5 + 0.5) * 255) | 0;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(0.18, 0.18);
+    return t;
+  }
+
+  return {
+    grass: makeGrass(),
+    ground: makeGround(),
+    paving: makePaving(),
+    asphalt: makeAsphalt(),
+    waterNormal: makeWaterNormal()
+  };
+})();
 
 /* ------------------------------- 5. TERRENO ------------------------------- */
 /**
@@ -782,10 +1002,11 @@ function buildTerrain(extentRange, rasterTexture) {
   pos.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Arranca sin la ortofoto: las capas vectoriales se leen mejor en 3D y la
-  // tesela z17 estirada sobre 1,3 km se ve borrosa. El HUD la puede encender.
   const mat = new THREE.MeshStandardMaterial({
-    map: null, color: 0x689b42, roughness: 0.95, metalness: 0.0
+    // Sin textura en el terreno: PlaneGeometry tiene UVs 0-1 que estiran cualquier
+    // textura a lo ancho del mapa y queda plana. Color gris-concreto puro (#D8D5D0)
+    // igual al tono de veredas: cuando asoma entre edificios se ve como pavimento.
+    color: 0xd8d5d0, roughness: 0.97, metalness: 0.0
   });
 
   // PlaneGeometry ordena los vertices por filas: indice = iy*(seg+1) + ix,
@@ -866,6 +1087,9 @@ function overpassQL() {
     lineas.push(`  way["${k}"]${caja};`);
     lineas.push(`  relation["${k}"]${caja};`);
   }
+  lineas.push(`  node["natural"="tree"]${caja};`);
+  lineas.push(`  node["highway"="street_lamp"]${caja};`);
+  lineas.push(`  node["amenity"="fountain"]${caja};`);
   return ['[out:json][timeout:90];', '(', ...lineas, ');',
           'out body geom qt;'].join("\n");
 }
@@ -1092,11 +1316,12 @@ function shapeFromRings(outer, holes = []) {
 /* ------------------- 8. EXTRUSION Y APOYO SOBRE EL TERRENO ---------------- */
 
 const MAT = {
-  base:   new THREE.MeshStandardMaterial({ color: 0xdedad0, roughness: 0.80, metalness: 0.02 }),
-  mid:    new THREE.MeshStandardMaterial({ color: 0xe6e2d8, roughness: 0.74, metalness: 0.02 }),
-  tower:  new THREE.MeshStandardMaterial({ color: 0xefebe2, roughness: 0.65, metalness: 0.03 }),
-  plain:  new THREE.MeshStandardMaterial({ color: 0xb5b9be, roughness: 0.85, metalness: 0.0 }),
-  steps:  new THREE.MeshStandardMaterial({ color: 0xd6d0c2, roughness: 0.80, metalness: 0.02 })
+  base:   new THREE.MeshStandardMaterial({ color: 0xacacac, roughness: 0.80, metalness: 0.02 }),
+  mid:    new THREE.MeshStandardMaterial({ color: 0xc4c4c4, roughness: 0.74, metalness: 0.02 }),
+  tower:  new THREE.MeshStandardMaterial({ color: 0xdcdcdc, roughness: 0.65, metalness: 0.03 }),
+  plain:  new THREE.MeshStandardMaterial({ color: 0xacacac, roughness: 0.85, metalness: 0.0 }),
+  steps:  new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.80, metalness: 0.02 }),
+  plinth: new THREE.MeshStandardMaterial({ color: 0xa0a0a0, roughness: 0.90, metalness: 0.0 })
 };
 
 /* Materiales derivados de building:colour / roof:colour, cacheados por color.
@@ -1144,19 +1369,19 @@ function materialForRoof(tags = {}) {
   if (raw && HEX.test(raw.trim())) return roofMatFromHex(raw);
   const shape = roofShapeOf(tags) ?? 'flat';
   switch (shape) {
-    case 'dome': case 'onion':      return roofMatFromHex('#b8b4ac', 0.65, 0.08); // zinc/plomo
-    case 'pyramidal':               return roofMatFromHex('#dedad0', 0.80, 0.02); // hormigon
+    case 'dome': case 'onion':      return roofMatFromHex('#7e878e', 0.60, 0.12); // zinc/plomo
+    case 'pyramidal':               return roofMatFromHex('#c8c4b8', 0.80, 0.02); // hormigon envejecido
     case 'gabled': case 'hipped':
     case 'half-hipped': case 'pitched':
-    case 'gambrel': case 'mansard': return roofMatFromHex('#7e4431', 0.90, 0.01); // teja
-    case 'skillion':                return roofMatFromHex('#8a7c6e', 0.88, 0.02); // pizarra
+    case 'gambrel': case 'mansard': return roofMatFromHex('#9b5533', 0.90, 0.01); // teja
+    case 'skillion':                return roofMatFromHex('#5a5a5a', 0.85, 0.03); // pizarra
   }
   // Sin dato de techo: el color del cuerpo apenas oscurecido, para que no salte
   const bodyRaw = tags['building:colour'] ?? tags['building:color'];
   if (bodyRaw && HEX.test(bodyRaw.trim()))
     return roofMatFromHex('#' + new THREE.Color(bodyRaw.trim().toLowerCase())
                                   .multiplyScalar(0.88).getHexString());
-  return roofMatFromHex('#9e9e9e', 0.85, 0.01);
+  return roofMatFromHex('#888888', 0.85, 0.01);
 }
 
 /* -------- Generadores de geometria de techo 3D (procedural) -------- */
@@ -1906,7 +2131,7 @@ function buildPlinths(footprints) {
       depth: g.skirt, bevelEnabled: false, curveSegments: 2, steps: 1
     });
     geo.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geo, materialFor(f.kind, 0, f.tags));
+    const mesh = new THREE.Mesh(geo, MAT.plinth);
     mesh.position.y     = g.datum - g.skirt;       // el tope queda en el apoyo
     mesh.castShadow     = true;
     mesh.receiveShadow  = true;
@@ -2032,10 +2257,10 @@ const SURF = {
    devuelve el color por defecto de la capa, sin inventar nada. */
 const SUPERFICIE = {
   paving_stones: 0xd8d3c8, sett: 0xc4bdb0, cobblestone: 0xbdb5a7,
-  concrete: 0xd0cdc6, paved: 0xd5d1c9, asphalt: 0x6f7378,
+  concrete: 0xd0cdc6, paved: 0xd5d1c9, asphalt: 0x8e8e8e,
   gravel: 0xc2b9a6, fine_gravel: 0xcdc5b4, compacted: 0xc8bfae,
   ground: 0xb2a189, dirt: 0xad9b83, earth: 0xad9b83, sand: 0xe0d2ad,
-  grass: 0x6ea344, wood: 0xa98a5f, metal: 0x9aa0a6, tartan: 0xb5634a
+  grass: 0xa8b36b, wood: 0xa98a5f, metal: 0x9aa0a6, tartan: 0xb5634a
 };
 function colorDeSuperficie(sup, porDefecto) {
   if (!sup) return porDefecto;
@@ -2083,25 +2308,25 @@ function classifyArea(t) {
     // no se veia: le pasaba al de la Plaza Barrancas de las Ceibas y a otro.
     // Sigue por debajo de la calzada (0,23), que es lo correcto cuando un
     // puente cruza el agua.
-    return { id: 'agua', color: 0x2b6c99, off: AGUA_OFF, rough: 0.18, metal: 0.15,
+    return { id: 'agua', color: 0x6697a9, off: AGUA_OFF, rough: 0.18, metal: 0.15,
              cuenco };
   }
   if (t.natural === 'wood' || t.landuse === 'forest')
-    return { id: 'arboleda',  color: 0x3d6632, off: SUELO.arboleda };
+    return { id: 'arboleda',  color: 0x4a7a3a, off: SUELO.arboleda };
   if (t.leisure === 'park' || t.leisure === 'garden' || t.landuse === 'grass' ||
       t.landuse === 'recreation_ground' || t.leisure === 'pitch')
-    return { id: 'verde',     color: 0x6ea344, off: SUELO.verde };
+    return { id: 'verde',     color: 0xa8b36b, off: SUELO.verde };
   if (t.leisure === 'sports_centre' || t.leisure === 'swimming_pool' || t.leisure === 'playground')
-    return { id: 'deportivo', color: 0x5b8a54, off: SUELO.deportivo };
+    return { id: 'deportivo', color: 0x68965a, off: SUELO.deportivo };
   if (t.amenity === 'parking')
-    return { id: 'playa',     color: 0x484b52, off: SUELO.playa };
+    return { id: 'playa',     color: 0x707070, off: SUELO.playa };
   if (t.man_made === 'pier')
     // Justo debajo de la calzada: un muelle es una tarima sobre el agua,
     // pero si una calle lo cruza manda la calle. Sigue muy por encima del
     // agua (0,150), que es lo que tiene que tapar.
-    return { id: 'muelle',    color: 0xa89474, off: 0.225 };
+    return { id: 'muelle',    color: 0x9e8868, off: 0.225 };
   if (t.historic === 'memorial' || t.amenity === 'fountain')
-    return { id: 'plaza_monumento', color: 0xdcd7cc, off: SUELO.peatonal };
+    return { id: 'plaza_monumento', color: 0xc8c8c4, off: SUELO.peatonal };
   // Una vereda o una plaza puede venir como AREA y no como linea: es
   // `highway=footway|pedestrian|...` con `area=yes`, y muchas veces como
   // relacion multipoligono. Sin esta regla caia en classifyLine y se dibujaba
@@ -2119,10 +2344,10 @@ function classifyArea(t) {
   if (t.highway === 'pedestrian' || t['area:highway'] || t.place === 'square' ||
       esAreaPeatonal)
     return { id: 'peatonal·' + (t.surface || 'liso'),
-             color: colorDeSuperficie(t.surface, 0xe2ded4), off: SUELO.peatonal };
+             color: colorDeSuperficie(t.surface, 0xe4e4e4), off: SUELO.peatonal };
   if (t.amenity === 'school' || t.amenity === 'hospital' ||
       ['military', 'brownfield', 'construction', 'industrial', 'religious'].includes(t.landuse))
-    return { id: 'predio',    color: 0x8d8b85, off: SUELO.predio };
+    return { id: 'predio',    color: 0xa5a29c, off: SUELO.predio };
   // landuse=residential / commercial / retail son zonificacion administrativa,
   // no superficie: no se dibujan.
   return null;
@@ -2158,7 +2383,8 @@ const LANE = {
   maximo:    45,
   calibrado: false,    // lo pone calibrateLanes si encuentra muestra
   // anchos medianos medidos en esta descarga
-  porCalle:  {},       // "nombre|clase" -> metros (la misma calle)
+  porVia:    new Map(), // id de way -> metros (su calle, segun el grafo)
+  porCalle:  {},       // "nombre|clase" -> metros (respaldo, sin grafo)
   porClase:  {}        // highway -> metros (ultimo recurso con dato)
 };
 
@@ -2216,7 +2442,20 @@ function anchoDeclarado(t, usaCarriles) {
   return null;
 }
 
-function anchoDeVia(t, porClase, usaCarriles) {
+function anchoDeVia(t, porClase, usaCarriles, id) {
+  // La calle MANDA sobre el tramo. OSM parte una avenida en un way por
+  // cuadra y cada uno declara sus carriles: la Avenida Manuel Belgrano
+  // trae 4 3 2 2 2 4 4 4 4 3 4 4 4 2 y, dibujada tramo a tramo, salta de
+  // 14 a 7 m en cada esquina. Una calle tiene un ancho, no catorce.
+  if (usaCarriles) {
+    // 1. el recorrido al que pertenece esta via, segun el grafo
+    const deVia = LANE.porVia.get(id);
+    if (Number.isFinite(deVia)) return { m: deVia, de: 'calle' };
+    // 2. su nombre, para cuando no hay grafo (escena de respaldo, pruebas)
+    const k = claveDeCalle(t);
+    const propia = k ? LANE.porCalle[k] : undefined;
+    if (Number.isFinite(propia)) return { m: propia, de: 'calle' };
+  }
   const dec = anchoDeclarado(t, usaCarriles);
   if (dec) return dec;
   // Sin dato propio: la mediana de SU clase en esta descarga. Sin esto, una
@@ -2224,9 +2463,6 @@ function anchoDeVia(t, porClase, usaCarriles) {
   // contra su vecina de 3,5 m, que si declara -- el escalon en el cruce
   // pasaba de 21 casos a 33 justamente por mezclar las dos fuentes.
   if (usaCarriles) {
-    const k = claveDeCalle(t);
-    const propia = k ? LANE.porCalle[k] : undefined;
-    if (Number.isFinite(propia)) return { m: propia, de: 'calle' };
     const m = LANE.porClase[t.highway];
     if (Number.isFinite(m)) return { m, de: 'vecinos' };
   }
@@ -2242,6 +2478,35 @@ const mediana = a => { const s = [...a].sort((x, y) => x - y);
                        return s[Math.floor(s.length / 2)]; };
 
 /**
+ * Mediana PESADA POR LARGO: el ancho que tiene la mayor parte de los metros
+ * de la calle. Un tramo corto de ensanche en la esquina no puede decidir el
+ * ancho de toda la avenida, y la mediana simple tampoco alcanza porque OSM
+ * parte las cuadras en pedazos de largos muy distintos.
+ */
+function medianaPesada(pares) {
+  if (!pares.length) return NaN;
+  const a = [...pares].sort((x, y) => x.m - y.m);
+  const total = a.reduce((s, p) => s + p.largo, 0);
+  if (!(total > 0)) return mediana(a.map(p => p.m));
+  let acum = 0;
+  for (const p of a) { acum += p.largo; if (acum >= total / 2) return p.m; }
+  return a[a.length - 1].m;
+}
+
+/** Largo de una via en metros, a partir de su geometria en grados. */
+function largoDeVia(el) {
+  const g = el.geometry;
+  if (!g || g.length < 2) return 0;
+  let L = 0;
+  for (let i = 0; i + 1 < g.length; i++) {
+    const a = g[i], b = g[i + 1];
+    const mLon = Math.cos(a.lat * Math.PI / 180) * 111320;
+    L += Math.hypot((b.lon - a.lon) * mLon, (b.lat - a.lat) * 110540);
+  }
+  return L;
+}
+
+/**
  * Identidad de una calle: su nombre y su clase. Una avenida partida en
  * ocho ways sigue siendo una sola avenida, y tiene un solo ancho.
  * Sin nombre no hay identidad, y devuelve null.
@@ -2251,9 +2516,89 @@ const claveDeCalle = t => {
   return n ? n + '|' + t.highway : null;
 };
 
+/**
+ * Rango de una clase de calzada. Solo se encadenan vias de rango parecido:
+ * que una living_street siga a una residential es normal, que un pasillo de
+ * servicio herede el ancho de una avenida no.
+ */
+const RANGO = { motorway: 3, trunk: 3, primary: 3, secondary: 2, tertiary: 2,
+                residential: 1, living_street: 1, unclassified: 1, service: 0 };
+
+/**
+ * CALLES SEGUN EL GRAFO.
+ *
+ * Agrupar por nombre no alcanza: medido en este bbox, de los 16 nodos donde
+ * una calzada continua en otra, 4 cambiaban de ancho -- Los Inmigrantes
+ * pasando de living_street a residential (7,0 -> 3,5 m) y Leandro N. Alem
+ * continuando en Cordoba (5,7 -> 9,2 m). En el dibujo eso es una panza: la
+ * calle viene ancha y se afina de golpe.
+ *
+ * Dos vias son la misma calzada cuando una TERMINA donde la otra ARRANCA,
+ * no hay una tercera en ese nodo, y siguen derecho (menos de 60 grados de
+ * giro). Eso cubre el cambio de nombre, el cambio de clase y las vias sin
+ * nombre, que por nombre no se podian agrupar.
+ */
+function agruparCalles(vias) {
+  const padre = new Map();
+  for (const v of vias) padre.set(v.id, v.id);
+  const raiz = a => { while (padre.get(a) !== a) { padre.set(a, padre.get(padre.get(a)));
+                                                   a = padre.get(a); } return a; };
+  const unir = (a, b) => { const x = raiz(a), y = raiz(b); if (x !== y) padre.set(x, y); };
+
+  // (a) mismo nombre y clase: sigue valiendo aunque el recorrido se corte
+  const porNombre = new Map();
+  for (const v of vias) {
+    const k = claveDeCalle(v.tags);
+    if (!k) continue;
+    if (porNombre.has(k)) unir(porNombre.get(k), v.id); else porNombre.set(k, v.id);
+  }
+
+  // (b) continuacion en el grafo
+  const K = p => Math.round(p.lat * 1e7) + '|' + Math.round(p.lon * 1e7);
+  const grado = new Map();      // nodo -> cuantas vias lo tocan, en cualquier vertice
+  for (const v of vias) for (const p of v.geometry) {
+    const k = K(p);
+    if (!grado.has(k)) grado.set(k, new Set());
+    grado.get(k).add(v.id);
+  }
+  const puntas = new Map();     // nodo -> extremos de via que caen ahi
+  for (const v of vias) {
+    const g = v.geometry;
+    for (const [iN, iV] of [[0, 1], [g.length - 1, g.length - 2]]) {
+      const a = g[iN], b = g[iV];
+      const mLon = Math.cos(a.lat * Math.PI / 180) * 111320;
+      const dx = (b.lon - a.lon) * mLon, dz = (b.lat - a.lat) * 110540;
+      const L = Math.hypot(dx, dz);
+      if (L < 1e-6) continue;
+      const k = K(a);
+      if (!puntas.has(k)) puntas.set(k, []);
+      puntas.get(k).push({ v, dx: dx / L, dz: dz / L });
+    }
+  }
+  for (const [k, lista] of puntas) {
+    if (lista.length !== 2) continue;              // no es una continuacion simple
+    if (grado.get(k).size !== 2) continue;         // hay una tercera via en el nodo
+    const [a, b] = lista;
+    if (a.v.id === b.v.id) continue;               // la via se cierra sobre si misma
+    // las dos salen casi al reves una de la otra: la calle sigue derecho
+    if (a.dx * b.dx + a.dz * b.dz > -0.5) continue;
+    const ra = RANGO[a.v.tags.highway], rb = RANGO[b.v.tags.highway];
+    if (!Number.isFinite(ra) || !Number.isFinite(rb) || Math.abs(ra - rb) > 1) continue;
+    unir(a.v.id, b.v.id);
+  }
+
+  const grupos = new Map();
+  for (const v of vias) {
+    const r = raiz(v.id);
+    if (!grupos.has(r)) grupos.set(r, []);
+    grupos.get(r).push(v);
+  }
+  return grupos;
+}
+
 function calibrateLanes(elements) {
   LANE.porCarril = 3.5; LANE.calibrado = false;
-  LANE.porClase = {}; LANE.porCalle = {};
+  LANE.porClase = {}; LANE.porCalle = {}; LANE.porVia = new Map();
 
   // 1. metros por carril: solo lo dicen las vias que declaran los dos datos
   const r = [];
@@ -2277,18 +2622,35 @@ function calibrateLanes(elements) {
     if (!dec) continue;
     (pool[t.highway] = pool[t.highway] || []).push(dec.m);
     const k = claveDeCalle(t);
-    if (k) (porCalle[k] = porCalle[k] || []).push(dec.m);
+    if (k) (porCalle[k] = porCalle[k] || []).push({ m: dec.m, largo: largoDeVia(el) });
   }
   for (const [clase, a] of Object.entries(pool))
     if (a.length >= 3) LANE.porClase[clase] = mediana(a);
   // Para la propia calle alcanza UN tramo declarado: no es una estadistica,
   // es el mismo objeto visto en otro pedazo.
-  for (const [k, a] of Object.entries(porCalle)) LANE.porCalle[k] = mediana(a);
+  for (const [k, a] of Object.entries(porCalle)) LANE.porCalle[k] = medianaPesada(a);
+
+  // 3. un ancho por RECORRIDO: agrupa por el grafo, no por el nombre.
+  const calzadas = elements.filter(el =>
+    el.type === 'way' && el.tags && el.geometry && el.geometry.length >= 2 &&
+    Number.isFinite(RANGO[el.tags.highway]));
+  for (const [, grupo] of agruparCalles(calzadas)) {
+    const muestras = [];
+    for (const v of grupo) {
+      const dec = anchoDeclarado(v.tags, true);
+      if (dec) muestras.push({ m: dec.m, largo: largoDeVia(v) });
+    }
+    if (!muestras.length) continue;             // sin dato: decide la clase
+    const w = medianaPesada(muestras);
+    for (const v of grupo) LANE.porVia.set(v.id, w);
+  }
 
   return { muestras: r.length, porCarril: LANE.porCarril,
            clases: Object.keys(LANE.porClase).length,
-           calles: Object.keys(LANE.porCalle).length };
+           calles: Object.keys(LANE.porCalle).length,
+           recorridos: LANE.porVia.size };
 }
+
 
 /** "53 por carriles · 42 por clase" para el HUD. */
 function anchosReport(a) {
@@ -2312,7 +2674,7 @@ function anchosReport(a) {
  *  - Cruces peatonales dibujados como pasos de cebra sobre la calzada (sin casing que corte).
  *  - Escaleras rectilíneas (sin discos circulares).
  */
-function classifyLine(t) {
+function classifyLine(t, idVia) {
   if (!t.highway) return null;
   /**
    * Jerarquía F4maps:
@@ -2332,7 +2694,7 @@ function classifyLine(t) {
   // `lanes` solo tiene sentido en una calzada: una vereda con lanes=2 no
   // mide 7 m. Por eso el ancho por carriles se pide explicitamente.
   const R = (id, width, color, off, casing, grow, opts = {}) => {
-    const a = anchoDeVia(t, width, id === 'calzada');
+    const a = anchoDeVia(t, width, id === 'calzada', idVia);
     return {
       id, color, off, width: a.m, anchoDe: a.de,
       casing: casing ? { color: casing, grow, off: CASING[id] || 0.155 } : null,
@@ -2340,23 +2702,29 @@ function classifyLine(t) {
     };
   };
 
+  /* El borde de la calzada es CLARO y ancho: es el cordon, y ademas es lo
+     que le da a la calle una silueta continua contra el pasto. Antes era
+     casi negro y de 0,4 a 0,8 m, con lo que no se distinguia del asfalto y
+     cualquier desprolijidad del empalme se leia como un corte. `grow` es el
+     ensanche TOTAL: la mitad asoma de cada lado. */
+  const CORDON = 0xd0d0d0;
   switch (t.highway) {
     case 'motorway': case 'trunk': case 'primary':
-      return R('calzada',  12, 0x3c3f46, 0.230, 0x222428, 0.8, { markings: true });
+      return R('calzada',  12, 0x8e8e8e, 0.230, CORDON, 1.8, { markings: true });
     case 'secondary':
-      return R('calzada',  10, 0x40434a, 0.230, 0x24262a, 0.7, { markings: true });
+      return R('calzada',  10, 0x8e8e8e, 0.230, CORDON, 1.6, { markings: true });
     case 'tertiary':
-      return R('calzada',   8, 0x44474e, 0.230, 0x26282c, 0.6, { markings: true });
+      return R('calzada',   8, 0x8e8e8e, 0.230, CORDON, 1.4, { markings: true });
     case 'residential': case 'living_street':
-      return R('calzada',   7, 0x484b52, 0.230, 0x292b2f, 0.5, { markings: false });
+      return R('calzada',   7, 0x8e8e8e, 0.230, CORDON, 1.2, { markings: false });
     case 'service':
-      return R('calzada',   4.5, 0x4c4f56, 0.230, 0x2c2e33, 0.4, { markings: false });
+      return R('calzada',   4.5, 0x8e8e8e, 0.230, CORDON, 1.0, { markings: false });
     case 'pedestrian':
-      return R('peaton_l',  6, 0xdcd8cf, 0.185, 0x7c786e, 0.5);
+      return R('peaton_l',  6, 0xe4e4e4, 0.185, 0x7c786e, 0.5);
     case 'cycleway':
       return R('bici',      2.2, 0x874e3d, 0.180, 0x543026, 0.4);
     case 'steps': {
-      const w = anchoDeVia(t, 2.5, false).m;
+      const w = anchoDeVia(t, 2.5, false, idVia).m;
       // 0,190: sobre la vereda (0,175) y el paseo peatonal (0,185), que es
       // donde una escalera realmente se apoya, y DEBAJO de la calzada
       // (0,230). Antes estaba en 0,240 y se dibujaba sobre el asfalto:
@@ -2382,7 +2750,7 @@ function classifyLine(t) {
         return R('cruce_cebra', 2.8, 0xfafafa, 0.238, null, 0, { isCrossing: true });
       }
       // Caminos y veredas por debajo de la calzada: la calle los tapa al cruzarse
-      return R('vereda', 2.0, 0xdcd8cf, 0.175, 0x7c786e, 0.35);
+      return R('vereda', 2.0, 0xcccccc, 0.175, 0x7c786e, 0.35);
   }
   return null;
 }
@@ -2405,20 +2773,20 @@ function classifyLine(t) {
  */
 const BARRERA = {
   //                  alto  ancho  color     (convenciones, ultimo recurso)
-  hedge:           { h: 1.2, w: 0.8, c: 0x4a7c3f },
+  hedge:           { h: 1.2, w: 0.8, c: 0x4a7a3a },
   wall:            { h: 1.6, w: 0.3, c: 0xb9b3a7 },
-  retaining_wall:  { h: 1.2, w: 0.4, c: 0xa8a297 },
+  retaining_wall:  { h: 1.2, w: 0.4, c: 0x9e988e },
   city_wall:       { h: 3.0, w: 0.8, c: 0xb0aa9e },
-  fence:           { h: 1.5, w: 0.08, c: 0x6b6b6b },
-  guard_rail:      { h: 0.7, w: 0.10, c: 0x9aa0a6 },
-  handrail:        { h: 1.0, w: 0.06, c: 0x9aa0a6 },
-  wire_fence:      { h: 1.5, w: 0.05, c: 0x7a7a7a },
-  hedge_bank:      { h: 1.2, w: 1.0, c: 0x4a7c3f }
+  fence:           { h: 1.5, w: 0.08, c: 0x606060 },
+  guard_rail:      { h: 0.7, w: 0.10, c: 0x8c9096 },
+  handrail:        { h: 1.0, w: 0.06, c: 0x8c9096 },
+  wire_fence:      { h: 1.5, w: 0.05, c: 0x757575 },
+  hedge_bank:      { h: 1.2, w: 1.0, c: 0x4a7a3a }
 };
 /* Color por material, cuando la barrera no declara `colour`. */
 const BARRERA_MAT = {
   brick: 0xa2705c, stone: 0xa9a49a, concrete: 0xb5b2ab, metal: 0x8d9298,
-  wood: 0x8a6a45, glass: 0x9fb8c4, hedge: 0x4a7c3f
+  wood: 0x8a6a45, glass: 0x9fb8c4, hedge: 0x4a7a3a
 };
 
 /** Estilo de una barrera, o null si no es de las que sabemos levantar. */
@@ -2531,10 +2899,12 @@ function insetRing(ring, d) {
 function buildWaterBasins(areaJobs) {
   if (!CFG.basins) return 0;
   const matObra = new THREE.MeshStandardMaterial({
-    color: 0xcfcabd, roughness: 0.88, metalness: 0.02, side: THREE.DoubleSide
+    color: 0xd0cdc4, roughness: 0.86, metalness: 0.02, side: THREE.DoubleSide
   });
   const matAgua = new THREE.MeshStandardMaterial({
-    color: 0x2b6c99, roughness: 0.12, metalness: 0.25, side: THREE.DoubleSide
+    color: 0x6697a9, roughness: 0.08, metalness: 0.18,
+    normalMap: TEX.waterNormal, normalScale: new THREE.Vector2(0.4, 0.4),
+    side: THREE.DoubleSide
   });
   let n = 0;
   for (const job of areaJobs) {
@@ -2588,10 +2958,33 @@ function buildWaterBasins(areaJobs) {
     // 3. lamina de agua, por dentro del brocal
     const agua = new THREE.ShapeGeometry(shapeFromRings(dentro, []));
     agua.rotateX(-Math.PI / 2);
-    agua.deleteAttribute('uv');
+    const aPos = agua.attributes.position;
+    const aUv = new Float32Array(aPos.count * 2);
+    for (let k = 0; k < aPos.count; k++) {
+      aUv[k * 2]     = aPos.getX(k);
+      aUv[k * 2 + 1] = aPos.getZ(k);
+    }
+    agua.setAttribute('uv', new THREE.BufferAttribute(aUv, 2));
     const mAgua = new THREE.Mesh(agua, matAgua);
     mAgua.position.y = lamina;
     gSurf.add(mAgua);
+
+    // 4. Chorro de agua espumoso (fountain jet)
+    const c = ringCentroid2d(dentro);
+    const gCore = new THREE.CylinderGeometry(0.08, 0.42, 3.8, 8, 1, true);
+    gCore.translate(0, 1.9, 0);
+    const gBase = new THREE.ConeGeometry(0.9, 1.2, 8, 1, true);
+    gBase.translate(0, 0.6, 0);
+    const jetPlume = mergeGeometries([gCore, gBase], false);
+    gCore.dispose(); gBase.dispose();
+    const jetMat = new THREE.MeshStandardMaterial({
+      color: 0xf0faff, roughness: 0.05, metalness: 0.1,
+      transparent: true, opacity: 0.85, side: THREE.DoubleSide
+    });
+    const jetMesh = new THREE.Mesh(jetPlume, jetMat);
+    jetMesh.position.set(c.x, lamina, c.z);
+    gSurf.add(jetMesh);
+    fountainJets.push(jetMesh);
 
     job.cavado = true;      // ya no se drapea: la lamina la dibuja el cuenco
     n++;
@@ -2894,19 +3287,60 @@ function junctionBranches(lineJobs) {
  * Poligono que tapa un cruce. `extra` ensancha cada rama, para el borde.
  * Devuelve null si no agrega nada (ramas alineadas, o cruce degenerado).
  */
+/** ¿Se cortan los segmentos ab y cd, sin contar extremos compartidos? */
+function seCortan(a, b, c, d) {
+  const o = (p, q, r) => Math.sign((q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x));
+  const o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
+  return o1 !== o2 && o3 !== o4 && o1 && o2 && o3 && o4;
+}
+/** ¿El anillo se cruza a si mismo? Un poligono asi no se puede triangular. */
+function seEnreda(r) {
+  const n = r.length;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (seCortan(r[i], r[(i + 1) % n], r[j], r[(j + 1) % n])) return true;
+    }
+  return false;
+}
+
+/**
+ * Poligono que tapa un cruce. `extra` ensancha cada rama, para el borde.
+ *
+ * Se recorren las ramas EN ORDEN ANGULAR y se une el borde de cada una con
+ * el de la siguiente. Asi cada rama conserva SU ancho y el cruce sale con
+ * forma de cruz. Antes se usaba la envolvente convexa, que en un cruce
+ * entre una avenida de 14 m y una calle de 3,5 m le pegaba a la calle un
+ * bloque de 14 m de lado: la calle se veia ensanchada en cada esquina.
+ *
+ * Si el resultado se enreda (ramas casi encimadas, angulos degenerados) se
+ * vuelve a la envolvente convexa, que siempre es un poligono valido aunque
+ * quede mas gorda.
+ */
 function junctionPatch(nodo, extra = 0) {
   const R = Math.max(...nodo.ramas.map(r => r.hw)) + extra;
   if (!(R > 0)) return null;
-  const pts = [];
+
+  const esquinas = [];   // por rama: {ang, izq, der}
   for (const r of nodo.ramas) {
     // nunca mas alla de donde llega la rama: un tramo corto no se estira
     const d = Math.min(R, r.largo);
     const hw = r.hw + extra;
     const px = nodo.p.x + r.dx * d, pz = nodo.p.z + r.dz * d;
     const nx = -r.dz * hw, nz = r.dx * hw;
-    pts.push({ x: px + nx, z: pz + nz }, { x: px - nx, z: pz - nz });
+    esquinas.push({ ang: Math.atan2(r.dz, r.dx),
+                    izq: { x: px + nx, z: pz + nz },
+                    der: { x: px - nx, z: pz - nz } });
   }
-  const h = convexHull(pts);
+  const todos = esquinas.flatMap(e => [e.izq, e.der]);
+  if (todos.length < 3) return null;
+
+  esquinas.sort((a, b) => a.ang - b.ang);
+  const anillo = [];
+  for (const e of esquinas) { anillo.push(e.der, e.izq); }
+  if (anillo.length >= 3 && !seEnreda(anillo)) return anillo;
+
+  const h = convexHull(todos);
   return h.length >= 3 ? h : null;
 }
 
@@ -2919,8 +3353,20 @@ function jointDiscs(pts, width, off, lados = 0) {
   const r = width / 2;
   if (r <= 0 || pts.length < 1) return null;
   if (!lados) lados = Math.max(8, Math.min(24, Math.round(r * 4)));
+  // Un anillo cerrado no tiene puntas: su primer vertice es un codo como
+  // cualquier otro y necesita su disco.
+  const n = pts.length;
+  const cerrado = n > 2 &&
+    Math.hypot(pts[0].x - pts[n - 1].x, pts[0].z - pts[n - 1].z) < 0.05;
   const v = [];
-  for (const q of pts) {
+  for (let idx = 0; idx < n; idx++) {
+    // La PUNTA va a ras. El disco redondea el codo, que es para lo que
+    // sirve; en el extremo de la via deja media rueda asomando fuera de la
+    // calzada -- medido, 45 puntas y 644 m2 de asfalto de mas, hasta 76 m2
+    // en una sola. El encuentro con la via que sigue no lo resuelve el
+    // disco sino el empalme del cruce (junctionPatch).
+    if (!cerrado && (idx === 0 || idx === n - 1)) continue;
+    const q = pts[idx];
     const cy = pavementY(q.x, q.z) + off;
     for (let k = 0; k < lados; k++) {
       const a0 = (k / lados) * Math.PI * 2, a1 = ((k + 1) / lados) * Math.PI * 2;
@@ -3061,7 +3507,7 @@ function stairNosingArea(pts, width, off, count, depth = 0.22) {
 /**
  * Señalizacion horizontal de calzadas: linea central discontinua blanca (F4maps).
  */
-function roadCenterMarkings(pts, off, dashLen = 3.5, gapLen = 3.5, markWidth = 0.22) {
+function roadCenterMarkings(pts, off, dashLen = 2.2, gapLen = 3.0, markWidth = 0.30) {
   if (pts.length < 2) return null;
   const acc = [0];
   for (let i = 1; i < pts.length; i++)
@@ -3112,7 +3558,63 @@ function roadCenterMarkings(pts, off, dashLen = 3.5, gapLen = 3.5, markWidth = 0
  * Cruce peatonal estilo cebra sobre el asfalto (F4maps).
  * Franjas blancas rectangulares orientadas paralelamente al trafico.
  */
-function zebraCrossingArea(pts, width, off) {
+/** Distancia de un punto (px,pz) al segmento A-B, en el plano XZ. */
+function distPointSeg(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 > 1e-9 ? clamp(((px - ax) * dx + (pz - az) * dz) / len2, 0, 1) : 0;
+  const cx = ax + dx * t, cz = az + dz * t;
+  return Math.hypot(px - cx, pz - cz);
+}
+
+/** Parametro t (0-1) del segmento A-B donde cruza C-D, o null si no se cruzan. */
+function segSegT(ax, az, bx, bz, cx, cz, dx2, dz2) {
+  const r_x = bx - ax, r_z = bz - az;
+  const s_x = dx2 - cx, s_z = dz2 - cz;
+  const denom = r_x * s_z - r_z * s_x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((cx - ax) * s_z - (cz - az) * s_x) / denom;
+  const u = ((cx - ax) * r_z - (cz - az) * r_x) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return t;
+}
+
+/**
+ * Dónde, a lo largo de `pts`, el cruce realmente pisa una calzada: el punto
+ * donde se cruza con la linea de una calzada y el ancho de esa calzada ahi.
+ * Sin esto, un cruce mapeado mas largo que la calle (de vereda a vereda por
+ * fuera de la senda peatonal) pintaba franjas sobre el pasto y la vereda.
+ * Se busca una interseccion real primero; si ninguna calzada cruza
+ * exactamente la linea (digitalizados con un pequeno hueco), se cae al
+ * punto de acercamiento mas cercano.
+ */
+function roadSpanForCrossing(pts, acc, calzadaJobs) {
+  let hit = null, near = null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const A = pts[i], B = pts[i + 1];
+    const segLen = acc[i + 1] - acc[i];
+    for (const l of calzadaJobs) {
+      for (let j = 0; j < l.pts.length - 1; j++) {
+        const P = l.pts[j], Q = l.pts[j + 1];
+        const rlen = Math.max(1e-6, Math.hypot(Q.x - P.x, Q.z - P.z));
+        const dx = (Q.x - P.x) / rlen, dz = (Q.z - P.z) / rlen;
+        const t = segSegT(A.x, A.z, B.x, B.z, P.x, P.z, Q.x, Q.z);
+        if (t !== null) {
+          const center = acc[i] + t * segLen;
+          if (!hit || Math.abs(center - acc[acc.length - 1] / 2) <
+                       Math.abs(hit.center - acc[acc.length - 1] / 2))
+            hit = { center, width: l.ls.width, dx, dz };
+        }
+        const mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2;
+        const d = distPointSeg(mx, mz, P.x, P.z, Q.x, Q.z);
+        if (!near || d < near.d) near = { d, center: (acc[i] + acc[i + 1]) / 2, width: l.ls.width, dx, dz };
+      }
+    }
+  }
+  return hit || near;
+}
+
+function zebraCrossingArea(pts, width, off, calzadaJobs) {
   if (pts.length < 2) return null;
   const acc = [0];
   for (let i = 1; i < pts.length; i++)
@@ -3120,25 +3622,38 @@ function zebraCrossingArea(pts, width, off) {
   const total = acc[acc.length - 1];
   if (total <= 1.0) return null;
 
-  const barWidth = 0.40, barGap = 0.40;
-  const barLen = Math.min(3.0, Math.max(1.8, width * 0.9));
+  // Recorta el rango a pisar a la calzada mas cercana: sin esto un cruce
+  // mapeado de vereda a vereda pinta franjas fuera de la calle.
+  let distMin = 0, distMax = total;
+  const span = calzadaJobs && roadSpanForCrossing(pts, acc, calzadaJobs);
+  if (span) {
+    distMin = Math.max(0, span.center - span.width / 2);
+    distMax = Math.min(total, span.center + span.width / 2);
+  }
+  if (distMax - distMin < 1.0) return null;
+
+  const barWidth = 0.55, barGap = 0.35;  // franjas anchas, bien visibles
+  const barLen = Math.min(4.0, Math.max(2.5, width * 0.95));
   const cycle = barWidth + barGap;
-  const nBars = Math.floor(total / cycle);
+  const nBars = Math.floor((distMax - distMin) / cycle);
   if (nBars < 1) return null;
 
   const v = [];
   for (let k = 0; k < nBars; k++) {
-    const dist = (k + 0.5) * cycle;
+    const dist = distMin + (k + 0.5) * cycle;
     let idx = 1;
     while (idx < acc.length - 1 && acc[idx] < dist) idx++;
     const A = pts[idx - 1], B = pts[idx];
     const seg = Math.max(1e-6, acc[idx] - acc[idx - 1]);
     const t = clamp((dist - acc[idx - 1]) / seg, 0, 1);
     const cx = A.x + (B.x - A.x) * t, cz = A.z + (B.z - A.z) * t;
-    const dx = (B.x - A.x) / seg, dz = (B.z - A.z) / seg;
 
-    const tx = -dz, tz = dx; // direccion vehicular
-    const px = dx, pz = dz;   // direccion del cruce
+    // Orientar segun la tangente REAL de la calzada, no la de la linea del
+    // cruce: si el cruce se digitalizo en diagonal (frecuente en una
+    // rotonda, donde la calzada es curva), usar su propia tangente daba
+    // franjas torcidas respecto del asfalto que realmente pisan.
+    const tx = span?.dx ?? -(B.z - A.z) / seg, tz = span?.dz ?? (B.x - A.x) / seg;
+    const px = -tz, pz = tx;   // direccion del cruce, perpendicular a la calzada
 
     const hw = barWidth / 2, hl = barLen / 2;
     const p = (side, lon) => {
@@ -3158,6 +3673,7 @@ function zebraCrossingArea(pts, width, off) {
   const nrm = new Float32Array(v.length);
   for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
   geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  return geo;
 }
 
 /** Acumula geometrias por capa y al final funde una unica malla por capa. */
@@ -3165,6 +3681,15 @@ class SurfaceBuilder {
   constructor() { this.bins = new Map(); this.count = 0; this.report = []; this.failed = []; }
   add(style, geo) {
     if (!geo) return;
+    const pos = geo.attributes.position;
+    if (pos) {
+      const uvs = new Float32Array(pos.count * 2);
+      for (let i = 0; i < pos.count; i++) {
+        uvs[i * 2]     = pos.getX(i);
+        uvs[i * 2 + 1] = pos.getZ(i);
+      }
+      geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    }
     if (!this.bins.has(style.id)) this.bins.set(style.id, { style, geos: [] });
     this.bins.get(style.id).geos.push(geo);
     this.count++;
@@ -3174,10 +3699,36 @@ class SurfaceBuilder {
       const merged = mergeGeometries(geos, false);
       if (!merged) { this.failed.push(style.id + ' (' + geos.length + ')'); continue; }
       geos.forEach(g => g.dispose());
+
+      let map = null, normalMap = null, normalScale = undefined;
+      let roughness = style.rough ?? 0.95;
+      let metalness = style.metal ?? 0;
+      let matColor = style.color;  // por defecto el color del estilo
+
+      if (style.id.startsWith('verde') || style.id.startsWith('arboleda') || style.id.startsWith('deportivo')) {
+        map = TEX.grass;
+        matColor = 0xffffff;  // la textura de pasto ya tiene color baked, sin tinte
+        roughness = 0.95;
+      } else if (style.id.startsWith('peatonal') || style.id.startsWith('plaza') || style.id.startsWith('escalera')) {
+        map = TEX.paving;
+        // matColor queda = style.color (0xcccccc / 0xe4e4e4): tine la textura de losas
+        roughness = 0.88;
+      } else if (style.id.startsWith('calzada') || style.id.startsWith('playa')) {
+        map = TEX.asphalt;
+        // matColor queda = style.color (0x8e8e8e): tine la textura de asfalto
+        roughness = 0.86;
+      } else if (style.id.startsWith('agua')) {
+        normalMap = TEX.waterNormal;
+        normalScale = new THREE.Vector2(0.35, 0.35);
+        roughness = 0.08;
+        metalness = 0.18;
+      }
+
       const mesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({
-        color: style.color,
-        roughness: style.rough ?? 0.95,
-        metalness: style.metal ?? 0,
+        color: matColor,
+        map, normalMap, normalScale,
+        roughness,
+        metalness,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
       }));
       mesh.receiveShadow = true;
@@ -3212,10 +3763,15 @@ function processOSM(elements) {
   // descarga, no se heredan de la anterior ni de otra ciudad.
   calibrateLanes(elements);
   const footprints = [];   // { outer, holes, tags, kind }
-  const areaJobs = [], lineJobs = [], barrierJobs = [];
+  const areaJobs = [], lineJobs = [], barrierJobs = [], nodeJobs = [];
 
   for (const el of elements) {
     const tags = el.tags || {};
+    if (el.type === 'node') {
+      const p = World.toWorld(el.lon, el.lat);
+      nodeJobs.push({ x: p.x, z: p.z, tags, id: el.id });
+      continue;
+    }
 
     if (el.type === 'way' && el.geometry) {
       // Las barreras se resuelven antes: un seto puede venir como anillo
@@ -3240,8 +3796,9 @@ function processOSM(elements) {
         }
       }
       // no es poligono dibujable: puede ser una linea de circulacion
-      const ls = classifyLine(tags);
-      if (ls) lineJobs.push({ pts: lineFromGeometry(el.geometry), ls });
+      // (el id va aparte: es lo que ata la via a su recorrido)
+      const ls = classifyLine(tags, el.id);
+      if (ls) lineJobs.push({ pts: lineFromGeometry(el.geometry), ls, tags });
 
     } else if (el.type === 'relation' && el.members) {
       const outers = [], inners = [];
@@ -3335,6 +3892,7 @@ function processOSM(elements) {
     if (f.kind === 'part') stats.part++; else stats.bld++;
   }
 
+
   // De donde salio el ancho de cada calzada, para poder mirarlo en el HUD.
   stats.anchos = { total: 0, width: 0, lanes: 0, calle: 0, vecinos: 0, clase: 0 };
   for (const l of lineJobs) {
@@ -3344,7 +3902,7 @@ function processOSM(elements) {
 
   stats.barreras = calibrateBarriers(barrierJobs);
   stats.barreras.total = barrierJobs.length;
-  stats.jobs = { areaJobs, lineJobs, barrierJobs };
+  stats.jobs = { areaJobs, lineJobs, barrierJobs, nodeJobs };
   stats.footprints = visible.filter(f => f.kind === 'building' || f.kind === 'part');
   stats.stepLines  = lineJobs.filter(l => l.ls.nosing);
   return stats;
@@ -3392,7 +3950,11 @@ function buildSurfaces(jobs) {
   for (const n of cruces) {
     const c = n.ls.casing;
     if (!c) continue;
-    const anillo = junctionPatch(n, c.grow / 2);
+    // El ensanche lo manda la rama MAS ANCHA, no el estilo del primer way que
+    // llego al nodo: con el grow del mas angosto, el cordon de la calle ancha
+    // sobresale del parche y deja un escalon. Medido: 9 de 66 cruces.
+    const grow = Math.max(c.grow, ...n.ramas.map(r => r.grow || 0));
+    const anillo = junctionPatch(n, grow / 2);
     if (anillo) sb.add({ id: n.ls.id + '·borde', color: c.color, off: c.off,
                          quiet: true }, drapedArea(anillo, [], c.off));
   }
@@ -3435,10 +3997,12 @@ function buildSurfaces(jobs) {
   }
 
   // 5. Señalizacion vial F4maps: pasos de cebra peatonales (footway=crossing)
+  const calzadasParaCruce = jobs.lineJobs.filter(l => l.ls.id === 'calzada');
   for (const l of jobs.lineJobs) {
     if (!l.ls.isCrossing || l.pts.length < 2) continue;
-    sb.add({ id: 'paso_cebra', color: 0xfafafa, off: l.ls.off, quiet: true },
-           zebraCrossingArea(l.pts, l.ls.width, l.ls.off));
+    // +0.022 sobre la calzada para evitar z-fighting y que las franjas sean visibles
+    sb.add({ id: 'paso_cebra', color: 0xf5f5f5, off: l.ls.off + 0.022, quiet: true },
+           zebraCrossingArea(l.pts, l.ls.width, l.ls.off + 0.022, calzadasParaCruce));
   }
 
   const layers = sb.build(gSurf);
@@ -3576,6 +4140,12 @@ function sedimentAt(x, z, cleanY) {
   return manto + talus + entierro;
 }
 
+/** Convierte "#rrggbb" a [r,g,b] en 0-1, para pintar vertex colors. */
+function hexToRgb01(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
 /**
  * Levanta el terreno con el sedimento y le pinta el color por vertice: tierra
  * donde la capa es fina, maleza donde es espesa.
@@ -3593,9 +4163,9 @@ function applyRubble() {
   const col = new Float32Array(pos.count * 3);
   const R = CFG.rubble;
 
-  const LIMPIO = [0.56, 0.54, 0.48];   // suelo desnudo
-  const TIERRA = [0.44, 0.37, 0.27];   // sedimento seco
-  const MALEZA = [0.33, 0.44, 0.22];   // vegetacion tomada
+  const LIMPIO = hexToRgb01(R.cleanColor); // suelo base, elegible desde el HUD
+  const TIERRA = [0.55, 0.44, 0.30];   // sedimento seco (tierra rica)
+  const MALEZA = [0.38, 0.52, 0.24];   // vegetacion tomada (verde intenso)
 
   // "Cubierto" tiene que significar que el solado quedo debajo, no que hay
   // una pizca de sedimento: se mide contra el espesor de la vereda (0,26 m).
@@ -3648,8 +4218,8 @@ const grassTime = { value: 0 };
 /** Una mata: `blades` hojas afinadas hacia la punta, inclinadas y giradas. */
 function tuftGeometry(blades, seed) {
   const pos = [], col = [], alt = [], idx = [];
-  const BASE = [0.24, 0.30, 0.13];   // verde oscuro al pie
-  const TIP  = [0.55, 0.66, 0.30];   // mas claro y seco en la punta
+  const BASE = [0.22, 0.38, 0.12];   // verde oscuro al pie
+  const TIP  = [0.66, 0.70, 0.42];   // punta combinada con pasto #A8B36B
   let v = 0;
 
   for (let b = 0; b < blades; b++) {
@@ -3779,6 +4349,250 @@ function buildGrass() {
   return { n: grassSeed.n, tris };
 }
 
+/* ---------------- 10quater. ARBOLEDAS, PALMERAS Y PROPS URBANOS ----------- */
+
+function buildTrees(jobs) {
+  clearGroup(gTrees, true);
+  if (!document.getElementById('c-trees')?.checked || !jobs) return;
+
+  const treePoints = [];
+
+  // 1. Nodos puntuales de árboles en OSM
+  for (const n of (jobs.nodeJobs || [])) {
+    if (n.tags && (n.tags.natural === 'tree' || n.tags.historic === 'memorial_tree')) {
+      const isPalm = n.tags.genus === 'Phoenix' || n.tags.species === 'Syagrus' ||
+                     (n.tags.name && /palmera/i.test(n.tags.name)) ||
+                     (n.x > 80 && Math.abs(n.z) < 250);
+      const isPine = n.tags.genus === 'Pinus' || n.tags.species === 'Cupressus';
+      const kind = isPalm ? 'palm' : (isPine ? 'pine' : 'leafy');
+      treePoints.push({ x: n.x, z: n.z, kind, scale: 0.9 + hash2(n.id, 1, 99) * 0.35 });
+    }
+  }
+
+  // 2. Dispersión procedural en polígonos de parque, césped y arboledas
+  for (const a of (jobs.areaJobs || [])) {
+    if (!a.st || (a.st.id !== 'verde' && a.st.id !== 'arboleda')) continue;
+    const ring = a.outer;
+    if (ring.length < 3) continue;
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const p of ring) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+    }
+
+    const step = a.st.id === 'arboleda' ? 11 : 14;
+    for (let gx = minX + 5; gx < maxX - 5; gx += step) {
+      for (let gz = minZ + 5; gz < maxZ - 5; gz += step) {
+        const jx = (hash2(gx | 0, gz | 0, 101) - 0.5) * (step * 0.75);
+        const jz = (hash2(gx | 0, gz | 0, 103) - 0.5) * (step * 0.75);
+        const px = gx + jx, pz = gz + jz;
+
+        if (!pointInRing(px, pz, ring)) continue;
+        let inHole = false;
+        for (const h of a.holes) {
+          if (pointInRing(px, pz, h)) { inHole = true; break; }
+        }
+        if (inHole) continue;
+
+        // Evitar plantar encima de senderos peatonales
+        let tooClose = false;
+        for (const l of jobs.lineJobs) {
+          for (let k = 0; k < l.pts.length; k += 2) {
+            const lp = l.pts[k];
+            if (Math.hypot(px - lp.x, pz - lp.z) < 2.4) { tooClose = true; break; }
+          }
+          if (tooClose) break;
+        }
+        if (tooClose) continue;
+
+        const isNearRiver = px > 90;
+        const seed = hash2(px | 0, pz | 0, 777);
+        let kind = 'leafy';
+        if (isNearRiver) {
+          kind = seed < 0.45 ? 'palm' : (seed < 0.80 ? 'leafy' : 'pine');
+        } else {
+          kind = seed < 0.65 ? 'leafy' : (seed < 0.88 ? 'pine' : 'palm');
+        }
+
+        treePoints.push({
+          x: px, z: pz, kind,
+          scale: 0.85 + hash2(px | 0, pz | 0, 444) * 0.40
+        });
+      }
+    }
+  }
+
+  if (!treePoints.length) return;
+
+  // --- Geometrías base compartidas ---
+  const trunkLeafy = new THREE.CylinderGeometry(0.18, 0.28, 3.2, 7);
+  trunkLeafy.translate(0, 1.6, 0);
+  const g1 = new THREE.DodecahedronGeometry(1.8, 1); g1.translate(0, 3.9, 0);
+  const g2 = new THREE.DodecahedronGeometry(1.4, 1); g2.translate(-0.8, 4.5, 0.4);
+  const g3 = new THREE.DodecahedronGeometry(1.5, 1); g3.translate(0.7, 4.6, -0.5);
+  const folLeafy = mergeGeometries([g1, g2, g3], false);
+  g1.dispose(); g2.dispose(); g3.dispose();
+
+  const trunkPalm = new THREE.CylinderGeometry(0.13, 0.22, 6.2, 7);
+  trunkPalm.translate(0, 3.1, 0);
+  const cones = [];
+  for (let f = 0; f < 8; f++) {
+    const ang = (f / 8) * Math.PI * 2;
+    const cg = new THREE.ConeGeometry(0.38, 3.0, 4);
+    cg.rotateZ(Math.PI * 0.42);
+    cg.rotateY(ang);
+    cg.translate(Math.sin(ang) * 1.1, 5.9, Math.cos(ang) * 1.1);
+    cones.push(cg);
+  }
+  const crownPalm = mergeGeometries(cones, false);
+  cones.forEach(g => g.dispose());
+
+  const trunkPine = new THREE.CylinderGeometry(0.16, 0.24, 2.0, 7);
+  trunkPine.translate(0, 1.0, 0);
+  const c1 = new THREE.ConeGeometry(2.0, 2.4, 7); c1.translate(0, 2.6, 0);
+  const c2 = new THREE.ConeGeometry(1.5, 2.1, 7); c2.translate(0, 3.8, 0);
+  const c3 = new THREE.ConeGeometry(1.0, 1.8, 7); c3.translate(0, 4.9, 0);
+  const folPine = mergeGeometries([c1, c2, c3], false);
+  c1.dispose(); c2.dispose(); c3.dispose();
+
+  const matTrunk = new THREE.MeshStandardMaterial({ color: 0x54402e, roughness: 0.95 });
+  const matLeafy = new THREE.MeshStandardMaterial({ color: 0x3d7028, roughness: 0.82 });
+  const matPalmCrown = new THREE.MeshStandardMaterial({ color: 0x4a822d, roughness: 0.78, side: THREE.DoubleSide });
+  const matPine = new THREE.MeshStandardMaterial({ color: 0x22481e, roughness: 0.88 });
+
+  const groups = {
+    leafy: treePoints.filter(t => t.kind === 'leafy'),
+    palm:  treePoints.filter(t => t.kind === 'palm'),
+    pine:  treePoints.filter(t => t.kind === 'pine')
+  };
+
+  const dummy = new THREE.Object3D();
+
+  function makeInstanced(geoT, matT, geoF, matF, list) {
+    if (!list.length) return;
+    const meshT = new THREE.InstancedMesh(geoT, matT, list.length);
+    const meshF = new THREE.InstancedMesh(geoF, matF, list.length);
+    meshT.castShadow = true; meshT.receiveShadow = true;
+    meshF.castShadow = true; meshF.receiveShadow = true;
+
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      const y = pavementY(t.x, t.z);
+      dummy.position.set(t.x, y, t.z);
+      dummy.scale.set(t.scale, t.scale, t.scale);
+      dummy.rotation.y = hash2(t.x | 0, t.z | 0, 555) * Math.PI * 2;
+      dummy.updateMatrix();
+      meshT.setMatrixAt(i, dummy.matrix);
+      meshF.setMatrixAt(i, dummy.matrix);
+    }
+    meshT.instanceMatrix.needsUpdate = true;
+    meshF.instanceMatrix.needsUpdate = true;
+    gTrees.add(meshT, meshF);
+  }
+
+  makeInstanced(trunkLeafy, matTrunk, folLeafy, matLeafy, groups.leafy);
+  makeInstanced(trunkPalm,  matTrunk, crownPalm, matPalmCrown, groups.palm);
+  makeInstanced(trunkPine,  matTrunk, folPine,  matPine,  groups.pine);
+}
+
+function buildProps(jobs) {
+  clearGroup(gProps, true);
+  if (!document.getElementById('c-props')?.checked || !jobs) return;
+
+  const dummy = new THREE.Object3D();
+
+  // 1. Farolas a lo largo de veredas
+  const lampPoints = [];
+  for (const l of jobs.lineJobs) {
+    if (l.ls.id !== 'vereda' && l.ls.id !== 'peatonal') continue;
+    let distAcc = 0;
+    for (let i = 0; i < l.pts.length - 1; i++) {
+      const a = l.pts[i], b = l.pts[i + 1];
+      const d = Math.hypot(b.x - a.x, b.z - a.z);
+      distAcc += d;
+      if (distAcc > 28) {
+        distAcc = 0;
+        lampPoints.push({ x: b.x, z: b.z });
+      }
+    }
+  }
+
+  if (lampPoints.length) {
+    const postGeo = new THREE.CylinderGeometry(0.06, 0.09, 3.8, 6);
+    postGeo.translate(0, 1.9, 0);
+    const headGeo = new THREE.BoxGeometry(0.32, 0.45, 0.32);
+    headGeo.translate(0, 3.9, 0);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x242629, roughness: 0.8 });
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xffe8aa, emissiveIntensity: 0.5 });
+
+    const postMesh = new THREE.InstancedMesh(postGeo, postMat, lampPoints.length);
+    const headMesh = new THREE.InstancedMesh(headGeo, headMat, lampPoints.length);
+    postMesh.castShadow = true;
+
+    for (let i = 0; i < lampPoints.length; i++) {
+      const p = lampPoints[i];
+      dummy.position.set(p.x, pavementY(p.x, p.z) + 0.16, p.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      postMesh.setMatrixAt(i, dummy.matrix);
+      headMesh.setMatrixAt(i, dummy.matrix);
+    }
+    postMesh.instanceMatrix.needsUpdate = true;
+    headMesh.instanceMatrix.needsUpdate = true;
+    gProps.add(postMesh, headMesh);
+  }
+
+  // 2. Autos en calzadas
+  const cars = [];
+  const carColors = [0xf5f5f5, 0xd0d0d0, 0x333333, 0x8b2522, 0x1f3652, 0x485848];
+  for (const l of jobs.lineJobs) {
+    if (l.ls.id !== 'calzada' || l.pts.length < 2) continue;
+    let acc = 16;
+    for (let i = 0; i < l.pts.length - 1; i++) {
+      const a = l.pts[i], b = l.pts[i + 1];
+      const d = Math.hypot(b.x - a.x, b.z - a.z);
+      acc += d;
+      if (acc > 30) {
+        acc = 0;
+        const dx = (b.x - a.x) / (d || 1), dz = (b.z - a.z) / (d || 1);
+        const ang = Math.atan2(dx, dz);
+        const px = -dz * 1.5, pz = dx * 1.5;
+        cars.push({
+          x: b.x + px, z: b.z + pz, rot: ang,
+          color: carColors[Math.floor(hash2(b.x | 0, b.z | 0, 202) * carColors.length)]
+        });
+      }
+    }
+  }
+
+  if (cars.length) {
+    const b1 = new THREE.BoxGeometry(1.8, 0.75, 4.2); b1.translate(0, 0.5, 0);
+    const b2 = new THREE.BoxGeometry(1.6, 0.65, 2.3); b2.translate(0, 1.15, -0.2);
+    const bodyGeo = mergeGeometries([b1, b2], false);
+    b1.dispose(); b2.dispose();
+
+    const carMesh = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({
+      roughness: 0.45, metalness: 0.25
+    }), cars.length);
+    carMesh.castShadow = true; carMesh.receiveShadow = true;
+
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i];
+      dummy.position.set(c.x, pavementY(c.x, c.z) + 0.22, c.z);
+      dummy.rotation.set(0, c.rot, 0);
+      dummy.scale.set(0.9, 0.9, 0.9);
+      dummy.updateMatrix();
+      carMesh.setMatrixAt(i, dummy.matrix);
+      carMesh.setColorAt(i, new THREE.Color(c.color));
+    }
+    carMesh.instanceMatrix.needsUpdate = true;
+    if (carMesh.instanceColor) carMesh.instanceColor.needsUpdate = true;
+    gProps.add(carMesh);
+  }
+}
+
 /* ------- 11. RESPALDO: esquema del monumento si Overpass no responde ------- */
 /** Datos SINTETICOS y aproximados, solo para que el prototipo sea demostrable
  *  sin red. Se rotula como tal en el HUD; no son datos de OSM. */
@@ -3848,7 +4662,8 @@ function rebuildAll() {
   pos.needsUpdate = true;
   terrainMesh.geometry.computeVertexNormals();
 
-  clearGroup(gBuild); clearGroup(gSurf, true);
+  clearGroup(gBuild); clearGroup(gSurf, true); clearGroup(gTrees, true); clearGroup(gProps, true);
+  fountainJets.length = 0;
   STITCH.open = 0;
   for (const k of Object.keys(ROOF_STATS)) delete ROOF_STATS[k];
 
@@ -3859,6 +4674,8 @@ function rebuildAll() {
   buildStepsField(stats.stepLines);
   applyRubble();
   buildGrass();
+  buildTrees(stats.jobs);
+  buildProps(stats.jobs);
 
   ui.stat('s-ele',    fmt(dem.min) + ' – ' + fmt(dem.max) + ' m s.n.m.');
   ui.stat('s-bld',    stats.bld);
@@ -4084,8 +4901,10 @@ async function main() {
   buildObstacleField(stats.footprints);
   buildStepsField(stats.stepLines);
   const rub = applyRubble();
-  ui.set('sembrando maleza ...');
   const gr = buildGrass();
+  ui.set('plantando arboledas y mobiliario urbano ...');
+  buildTrees(stats.jobs);
+  buildProps(stats.jobs);
   stats.surf = surf.count; stats.layers = surf.layers;
   document.getElementById('s-layers').innerHTML =
     surf.report.map(([id, n]) => id + ' <b>' + n + '</b>').join(' · ') +
@@ -4134,8 +4953,8 @@ document.getElementById('c-wire').onchange = e => {
 };
 document.getElementById('c-surf').onchange  = e => { gSurf.visible  = e.target.checked; };
 document.getElementById('c-bld').onchange   = e => { gBuild.visible = e.target.checked; };
-
-
+document.getElementById('c-trees').onchange = e => { gTrees.visible = e.target.checked; };
+document.getElementById('c-props').onchange = e => { gProps.visible = e.target.checked; };
 document.getElementById('c-grass').onchange = e => { gGrass.visible = e.target.checked; };
 
 
@@ -4171,6 +4990,13 @@ rRub.onchange = () => {
   CFG.rubble.amount = parseFloat(rRub.value) / 100;
   ui.set('acumulando sedimento …');
   requestAnimationFrame(() => { rebuildAll(); ui.set('listo', 'ok'); });
+};
+
+const rCleanColor = document.getElementById('r-cleancolor');
+rCleanColor.oninput = () => {
+  CFG.rubble.cleanColor = rCleanColor.value;
+  document.getElementById('r-cleancolor-v').textContent = rCleanColor.value;
+  applyRubble();
 };
 
 const rFlat = document.getElementById('r-flat');
@@ -4259,8 +5085,22 @@ let tPrev = performance.now();
 function animate() {
   requestAnimationFrame(animate);
   const now = performance.now();
-  grassTime.value += (now - tPrev) / 1000;   // el vaiven lo resuelve la GPU
+  const dt = (now - tPrev) / 1000;
+  grassTime.value += dt;   // el vaiven lo resuelve la GPU
   tPrev = now;
+
+  // Ondas dinámicas en el agua
+  if (TEX && TEX.waterNormal) {
+    TEX.waterNormal.offset.x = (TEX.waterNormal.offset.x + dt * 0.025) % 1;
+    TEX.waterNormal.offset.y = (TEX.waterNormal.offset.y + dt * 0.018) % 1;
+  }
+  // Pulsación de chorros de fuentes
+  for (let i = 0; i < fountainJets.length; i++) {
+    const j = fountainJets[i];
+    j.scale.y = 1.0 + Math.sin(now * 0.007 + j.position.x) * 0.08;
+    j.scale.x = j.scale.z = 1.0 + Math.cos(now * 0.005 + j.position.z) * 0.05;
+  }
+
   controls.update();
   render();
 }
