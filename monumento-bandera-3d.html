@@ -108,22 +108,19 @@
   <label class="chk"><input type="checkbox" id="c-bld" checked> Edificios</label>
   <label class="chk"><input type="checkbox" id="c-trees" checked> Árboles y palmeras 3D</label>
   <label class="chk"><input type="checkbox" id="c-props" checked> Mobiliario y vehículos</label>
-  <label class="chk"><input type="checkbox" id="c-grass" checked> Maleza</label>
+  <label class="chk"><input type="checkbox" id="c-grass"> Maleza</label>
   <div class="rng"><span>Maleza</span>
-    <input type="range" id="r-gd" min="0" max="30" step="1" value="9">
-    <b id="r-gd-v">0.09 /m²</b></div>
+    <input type="range" id="r-gd" min="0" max="30" step="1" value="0">
+    <b id="r-gd-v">0.00 /m²</b></div>
   <div class="rng"><span>Altura maleza</span>
-    <input type="range" id="r-gh" min="10" max="150" step="5" value="55">
-    <b id="r-gh-v">0.55 m</b></div>
+    <input type="range" id="r-gh" min="0" max="150" step="5" value="0">
+    <b id="r-gh-v">0.00 m</b></div>
   <div class="rng"><span>Sedimento</span>
-    <input type="range" id="r-rub" min="0" max="250" step="5" value="100">
-    <b id="r-rub-v">1.00 m</b></div>
-  <div class="rng"><span>Suelo limpio</span>
-    <input type="color" id="r-cleancolor" value="#d8d5d0">
-    <b id="r-cleancolor-v">#d8d5d0</b></div>
+    <input type="range" id="r-rub" min="0" max="250" step="5" value="0">
+    <b id="r-rub-v">0.00 m</b></div>
   <div class="rng"><span>Aplanado</span>
-    <input type="range" id="r-flat" min="0" max="100" step="5" value="65">
-    <b id="r-flat-v">65%</b></div>
+    <input type="range" id="r-flat" min="0" max="100" step="5" value="100">
+    <b id="r-flat-v">100%</b></div>
   <div class="rng"><span>Exag. vertical</span>
     <input type="range" id="r-exag" min="1" max="6" step="0.1" value="1">
     <b id="r-exag-v">1.0×</b></div>
@@ -189,6 +186,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TessellateModifier } from 'three/addons/modifiers/TessellateModifier.js';
 
 /* ----------------------------- 0. CONFIGURACION --------------------------- */
+
+const CLEAN_GROUND_COLOR = '#4a4a4a';
 
 const CFG = {
   // bbox de trabajo: sur, oeste, norte, este. No se escribe a mano: se
@@ -256,7 +255,7 @@ const CFG = {
   //   baseRadius   -> define que se considera "relieve de gran escala"
   //   relief       -> cuanto del detalle sobrevive. 1 = solo se quita ruido,
   //                   0 = queda unicamente la forma de gran escala (la barranca)
-  dem: { detailRadius: 1, baseRadius: 16, passes: 3, relief: 0.35 },
+  dem: { detailRadius: 1, baseRadius: 16, passes: 3, relief: 0.00 },
 
   // Donde apoya un volumen dentro del rango de terreno bajo su huella:
   // Percentil del terreno bajo el grupo en el que se apoya la plataforma.
@@ -304,8 +303,7 @@ const CFG = {
   // supera el espesor de la vereda, el suelo se la traga; donde no llega, la
   // calle asoma. El tapado sale de esa diferencia, no de recortar geometria.
   rubble: {
-    cleanColor: '#d8d5d0', // color del solado sin sedimento (gris concreto)
-    amount:     1.00,  // profundidad maxima de sedimento, en metros
+    amount:     0.00,  // profundidad maxima de sedimento, en metros
     patchScale: 26,    // tamano de los claros y los montones (m)
     octaves:    4,
     bare:       0.25,  // fraccion del ruido que queda por debajo del solado
@@ -327,8 +325,8 @@ const CFG = {
   // color por vertice, se suma; el tinte sigue marcando el manto y las matas
   // le dan volumen y silueta.
   grass: {
-    density:      0.09,   // matas por metro cuadrado de zona apta
-    height:       0.55,   // altura media de la mata (m)
+    density:      0.00,   // matas por metro cuadrado de zona apta
+    height:       0.00,   // altura media de la mata (m)
     heightVary:   0.55,   // variacion relativa de altura
     minSediment:  0.10,   // sedimento minimo para que prenda (m)
     fullSediment: 0.55,   // sedimento a partir del cual crece a densidad plena
@@ -2271,16 +2269,11 @@ function colorDeSuperficie(sup, porDefecto) {
 /* ESCALERA DE CAPAS DEL SOLADO.
  *
  * Todo lo que se drapea comparte el terreno, asi que el orden lo decide un
- * desfasaje de centimetros. Estaba cruzado: el area peatonal (0,16) tapaba el
- * borde de las veredas (0,155) y la arboleda (0,18) tapaba la cinta de vereda
- * (0,175). Se ordena en tres bandas:
+ * desfasaje de centimetros. Se ordena en tres bandas:
  *
- *   1. SUELO      0,06 - 0,15   lo que uno pisa: predios, verde, plazas, agua
- *   2. BORDES     0,155 - 0,21  el casing de cada camino  (ver CASING)
+ *   1. SUELO      0,06 - 0,15   predios, verde, plazas y agua
+ *   2. BORDES     0,155 - 0,21  el casing de cada camino
  *   3. CINTAS     0,175 - 0,24  el relleno de cada camino
- *
- * Asi ningun suelo puede tapar el borde de un camino, y el agua queda sobre
- * toda la vegetacion pero por debajo de un puente que la cruce.
  */
 const SUELO = {
   predio:    0.060,
@@ -2288,8 +2281,8 @@ const SUELO = {
   deportivo: 0.110,
   playa:     0.120,
   arboleda:  0.130,
-  peatonal:  0.145,   // plazas y veredas mapeadas como area
-  agua:      0.150    // sobre toda la vegetacion, debajo de los caminos
+  peatonal:  0.145,
+  agua:      0.150
 };
 const AGUA_OFF = SUELO.agua;
 
@@ -2298,16 +2291,22 @@ function classifyArea(t) {
   if (t.building || t['building:part']) return null;        // ya son volumenes
   if (t.natural === 'water' || t.waterway === 'riverbank' || t.landuse === 'reservoir' ||
       t.amenity === 'fountain' || t.man_made === 'water_basin') {
-    // Solo los recipientes construidos se cavan. Un rio o una laguna no: su
-    // borde es la costa, no un brocal, y ahi el drapeado es lo correcto.
-    const cuenco = t.amenity === 'fountain' || t.man_made === 'water_basin' ||
-                   ['reflecting_pool', 'basin', 'pond', 'fountain']
-                     .includes(t.water ?? '');
+    // Solo los recipientes construidos se cavan. En OSM varios espejos urbanos
+    // de esta zona figuran unicamente como natural=water, mientras sus vecinos
+    // declaran water=reflecting_pool. Se acepta ese caso como cuenco sin chorro;
+    // basinMaxArea sigue descartando rios, lagunas y superficies grandes.
+    const cuencoExplicito = t.amenity === 'fountain' ||
+                            t.man_made === 'water_basin' ||
+                            ['reflecting_pool', 'basin', 'pond', 'fountain']
+                              .includes(t.water ?? '');
+    const cuencoInferido = t.natural === 'water' && !t.water &&
+                           t.waterway !== 'riverbank' && t.landuse !== 'reservoir';
+    const cuenco = cuencoExplicito ? true : (cuencoInferido ? 'rim-only' : false);
     // El agua va POR ENCIMA de la vegetacion. Estaba en 0,05 y el cesped en
     // 0,12, asi que un espejo dentro de un parque quedaba tapado por 7 cm y
     // no se veia: le pasaba al de la Plaza Barrancas de las Ceibas y a otro.
-    // Sigue por debajo de la calzada (0,23), que es lo correcto cuando un
-    // puente cruza el agua.
+    // Los puentes y sus accesos se resuelven como vias; el agua conserva la
+    // cota de la plataforma peatonal donde forma parte de una plaza.
     return { id: 'agua', color: 0x6697a9, off: AGUA_OFF, rough: 0.18, metal: 0.15,
              cuenco };
   }
@@ -2321,9 +2320,6 @@ function classifyArea(t) {
   if (t.amenity === 'parking')
     return { id: 'playa',     color: 0x707070, off: SUELO.playa };
   if (t.man_made === 'pier')
-    // Justo debajo de la calzada: un muelle es una tarima sobre el agua,
-    // pero si una calle lo cruza manda la calle. Sigue muy por encima del
-    // agua (0,150), que es lo que tiene que tapar.
     return { id: 'muelle',    color: 0x9e8868, off: 0.225 };
   if (t.historic === 'memorial' || t.amenity === 'fountain')
     return { id: 'plaza_monumento', color: 0xc8c8c4, off: SUELO.peatonal };
@@ -2676,19 +2672,13 @@ function anchosReport(a) {
  */
 function classifyLine(t, idVia) {
   if (!t.highway) return null;
-  /**
-   * Jerarquía F4maps:
-   * La calzada (asfalto) es la superficie principal de circulacion y va POR ENCIMA
-   * de los senderos y veredas (off: 0.230 vs 0.175). Asi, cuando un caminito blanco
-   * cruza o toca la calle, la calle lo tapa a el, y no al reves.
-   */
+  // La calzada va por encima de senderos y veredas; asi los cruces no tapan el
+  // asfalto y los puentes siguen cubriendo el agua y el terreno.
   const CASING = {
     vereda:   0.155,
     bici:     0.160,
     peaton_l: 0.165,
     calzada:  0.200,
-    // La escalera estaba en 0,210, por encima del borde de la calzada.
-    // Ahora va con el resto del solado peatonal, debajo de toda cinta.
     escalera: 0.170
   };
   // `lanes` solo tiene sentido en una calzada: una vereda con lanes=2 no
@@ -2725,11 +2715,8 @@ function classifyLine(t, idVia) {
       return R('bici',      2.2, 0x874e3d, 0.180, 0x543026, 0.4);
     case 'steps': {
       const w = anchoDeVia(t, 2.5, false, idVia).m;
-      // 0,190: sobre la vereda (0,175) y el paseo peatonal (0,185), que es
-      // donde una escalera realmente se apoya, y DEBAJO de la calzada
-      // (0,230). Antes estaba en 0,240 y se dibujaba sobre el asfalto:
-      // medido, tapaba 25,8 m2 de calle en este bbox.
-      const st = R('escalera', w, 0xe6e1d5, 0.190, 0x9e9587, 0.4, { isStairs: true });
+      const st = R('escalera', w, 0xe6e1d5, 0.190, 0x9e9587, 0.4,
+                   { isStairs: true });
       const sc = parseInt(t['step_count'], 10);
       st.nosing = {
         count: Number.isFinite(sc) && sc > 1 ? sc : 0,
@@ -2737,20 +2724,19 @@ function classifyLine(t, idVia) {
       };
       return st;
     }
-    case 'footway': case 'path': case 'corridor':
+    case 'footway': case 'path': case 'corridor': {
+      const vereda = () => R('vereda', 2.0, 0xcccccc, 0.175, 0x7c786e, 0.35);
       if (t.footway === 'crossing') {
-        // Cruce peatonal estilo cebra sobre el asfalto (off superior a la
-        // calzada para pintar la cebra).
-        //
-        // Se probo agregarle una banda continua por debajo de los bastones
-        // para unir las dos veredas: la red peatonal pasaba de 9 pedazos a
-        // los 4 que trae OSM, pero la banda TAPA la calzada, sale mas ancha
-        // que la vereda y de otro gris. La calle no se tapa nunca y el
-        // solado peatonal es de un solo color, asi que se descarto.
-        return R('cruce_cebra', 2.8, 0xfafafa, 0.238, null, 0, { isCrossing: true });
+        const cruce = R('cruce_cebra', 2.8, 0xfafafa, 0.238, null, 0,
+                        { isCrossing: true });
+        // El cruce sigue siendo parte del mismo eje peatonal. Esta cinta se
+        // cose con las veredas y queda debajo de la calzada; la cebra visible
+        // se dibuja aparte con el recorte y la orientacion de main.
+        cruce.underlay = vereda();
+        return cruce;
       }
-      // Caminos y veredas por debajo de la calzada: la calle los tapa al cruzarse
-      return R('vereda', 2.0, 0xcccccc, 0.175, 0x7c786e, 0.35);
+      return vereda();
+    }
   }
   return null;
 }
@@ -2887,15 +2873,64 @@ function insetRing(ring, d) {
 /**
  * CUENCOS DE AGUA.
  *
- * El agua es horizontal, asi que el brocal se fija en la cota MAXIMA del
- * solado bajo el contorno: de lo contrario el espejo quedaria inclinado. En la
- * barranca eso hace que del lado bajo asome un muro -- medido, entre 1,8 y
- * 2,6 m en los espejos del monumento -- que es exactamente lo que tiene el
- * parque real, donde los espejos bajan en terrazas.
+ * El brocal y la lamina siguen el plano medio del terreno bajo el contorno.
+ * Mantenerlos horizontales a la cota maxima producia un muro alto del lado
+ * bajo y casi ningun borde del lado alto; la rasante local conserva un espesor
+ * visual uniforme incluso sobre parques inclinados.
  *
  * Tres piezas: losa de fondo (solida, hasta bien por debajo del terreno para
  * que no flote), brocal anular con espesor real, y la lamina de agua.
  */
+function basinTerrainPlane(ring) {
+  const samples = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 2));
+    for (let u = 0; u < steps; u++) {
+      const x = a.x + (b.x - a.x) * u / steps;
+      const z = a.z + (b.z - a.z) * u / steps;
+      samples.push({ x, z, y: pavementY(x, z) });
+    }
+  }
+  const center = ringCentroid2d(ring);
+  if (samples.length < 3) {
+    return { cx: center.x, cz: center.z, base: pavementY(center.x, center.z),
+             ax: 0, az: 0 };
+  }
+
+  let mx = 0, mz = 0, my = 0;
+  for (const p of samples) { mx += p.x; mz += p.z; my += p.y; }
+  mx /= samples.length; mz /= samples.length; my /= samples.length;
+  let sxx = 0, sxz = 0, szz = 0, sxy = 0, szy = 0;
+  for (const p of samples) {
+    const x = p.x - mx, z = p.z - mz, y = p.y - my;
+    sxx += x * x; sxz += x * z; szz += z * z;
+    sxy += x * y; szy += z * y;
+  }
+  const det = sxx * szz - sxz * sxz;
+  let ax = 0, az = 0;
+  if (Math.abs(det) > 1e-8) {
+    ax = (sxy * szz - szy * sxz) / det;
+    az = (szy * sxx - sxy * sxz) / det;
+    const slope = Math.hypot(ax, az);
+    if (slope > 0.5) { ax *= 0.5 / slope; az *= 0.5 / slope; }
+  }
+  const base = my + ax * (center.x - mx) + az * (center.z - mz);
+  return { cx: center.x, cz: center.z, base, ax, az };
+}
+
+function tiltBasinGeometry(geo, plane) {
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const dy = plane.ax * (pos.getX(i) - plane.cx) +
+               plane.az * (pos.getZ(i) - plane.cz);
+    pos.setY(i, pos.getY(i) + dy);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function buildWaterBasins(areaJobs) {
   if (!CFG.basins) return 0;
   const matObra = new THREE.MeshStandardMaterial({
@@ -2911,19 +2946,11 @@ function buildWaterBasins(areaJobs) {
     if (!job.st.cuenco || job.outer.length < 3) continue;
     if (Math.abs(signedArea(job.outer)) > CFG.basinMaxArea) continue;
 
-    // cota del solado bajo el contorno, densificando las aristas: el maximo
-    // manda (brocal horizontal) y el minimo dice cuanto hay que bajar la losa
-    let alto = -Infinity, bajo = Infinity;
-    for (let i = 0; i < job.outer.length; i++) {
-      const a = job.outer[i], b = job.outer[(i + 1) % job.outer.length];
-      const pasos = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z)));
-      for (let u = 0; u <= pasos; u++) {
-        const h = pavementY(a.x + (b.x - a.x) * u / pasos,
-                            a.z + (b.z - a.z) * u / pasos);
-        if (h > alto) alto = h;
-        if (h < bajo) bajo = h;
-      }
-    }
+    // Toda la fuente sigue el plano medio del terreno local. Usar la cota
+    // maxima como plano horizontal hacia que el lado bajo mostrara un muro
+    // mucho mas alto que el opuesto.
+    const plane = basinTerrainPlane(job.outer);
+    const alto = plane.base;
     if (!Number.isFinite(alto)) continue;
 
     // La lamina queda a la cota del agua drapeada (AGUA_OFF), no sobre el
@@ -2935,11 +2962,12 @@ function buildWaterBasins(areaJobs) {
     if (!dentro) continue;                         // huella impropia: se drapea
 
     // 1. losa de fondo, prolongada hasta debajo del terreno mas bajo
-    const hundir = Math.max(0.6, brocal - bajo + 0.6);
+    const hundir = Math.max(0.6, CFG.basinDepth + 0.35);
     const losa = new THREE.ExtrudeGeometry(shapeFromRings(job.outer, []), {
       depth: hundir, bevelEnabled: false, curveSegments: 2, steps: 1
     });
     losa.rotateX(-Math.PI / 2);
+    tiltBasinGeometry(losa, plane);
     const mLosa = new THREE.Mesh(losa, matObra);
     mLosa.position.y = fondo - hundir;
     mLosa.receiveShadow = true;
@@ -2950,6 +2978,7 @@ function buildWaterBasins(areaJobs) {
       depth: CFG.basinDepth, bevelEnabled: false, curveSegments: 2, steps: 1
     });
     aro.rotateX(-Math.PI / 2);
+    tiltBasinGeometry(aro, plane);
     const mAro = new THREE.Mesh(aro, matObra);
     mAro.position.y = fondo;
     mAro.castShadow = true; mAro.receiveShadow = true;
@@ -2958,6 +2987,7 @@ function buildWaterBasins(areaJobs) {
     // 3. lamina de agua, por dentro del brocal
     const agua = new THREE.ShapeGeometry(shapeFromRings(dentro, []));
     agua.rotateX(-Math.PI / 2);
+    tiltBasinGeometry(agua, plane);
     const aPos = agua.attributes.position;
     const aUv = new Float32Array(aPos.count * 2);
     for (let k = 0; k < aPos.count; k++) {
@@ -2969,22 +2999,26 @@ function buildWaterBasins(areaJobs) {
     mAgua.position.y = lamina;
     gSurf.add(mAgua);
 
-    // 4. Chorro de agua espumoso (fountain jet)
-    const c = ringCentroid2d(dentro);
-    const gCore = new THREE.CylinderGeometry(0.08, 0.42, 3.8, 8, 1, true);
-    gCore.translate(0, 1.9, 0);
-    const gBase = new THREE.ConeGeometry(0.9, 1.2, 8, 1, true);
-    gBase.translate(0, 0.6, 0);
-    const jetPlume = mergeGeometries([gCore, gBase], false);
-    gCore.dispose(); gBase.dispose();
-    const jetMat = new THREE.MeshStandardMaterial({
-      color: 0xf0faff, roughness: 0.05, metalness: 0.1,
-      transparent: true, opacity: 0.85, side: THREE.DoubleSide
-    });
-    const jetMesh = new THREE.Mesh(jetPlume, jetMat);
-    jetMesh.position.set(c.x, lamina, c.z);
-    gSurf.add(jetMesh);
-    fountainJets.push(jetMesh);
+    // 4. Chorro de agua espumoso. Un natural=water inferido recibe brocal,
+    // pero no se inventa un chorro que OSM no permite justificar.
+    if (job.st.cuenco !== 'rim-only') {
+      const c = ringCentroid2d(dentro);
+      const gCore = new THREE.CylinderGeometry(0.08, 0.42, 3.8, 8, 1, true);
+      gCore.translate(0, 1.9, 0);
+      const gBase = new THREE.ConeGeometry(0.9, 1.2, 8, 1, true);
+      gBase.translate(0, 0.6, 0);
+      const jetPlume = mergeGeometries([gCore, gBase], false);
+      gCore.dispose(); gBase.dispose();
+      const jetMat = new THREE.MeshStandardMaterial({
+        color: 0xf0faff, roughness: 0.05, metalness: 0.1,
+        transparent: true, opacity: 0.85, side: THREE.DoubleSide
+      });
+      const jetMesh = new THREE.Mesh(jetPlume, jetMat);
+      const jetY = lamina + plane.ax * (c.x - plane.cx) + plane.az * (c.z - plane.cz);
+      jetMesh.position.set(c.x, jetY, c.z);
+      gSurf.add(jetMesh);
+      fountainJets.push(jetMesh);
+    }
 
     job.cavado = true;      // ya no se drapea: la lamina la dibuja el cuenco
     n++;
@@ -3016,7 +3050,7 @@ function drapedArea(outer, holes, off) {
  * Rasante de una via: densifica la traza, calcula la cota de cada seccion y la
  * suaviza. Lo usa la cinta de la calzada.
  */
-function roadProfile(pts, width) {
+function roadProfile(pts, width, mitered = false) {
   const dense = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
     const a = dense[dense.length - 1], b = pts[i];
@@ -3038,18 +3072,43 @@ function roadProfile(pts, width) {
   // el terreno se nivela a esta misma rasante, asi que tomar el maximo solo
   // inflaba la cota -- las muestras de los bordes caen en la franja de
   // transicion, que queda a medio nivelar, y la calle volvia a flotar.
+  const closed = n > 3 && Math.hypot(dense[0].x - dense[n - 1].x,
+                                      dense[0].z - dense[n - 1].z) < REJILLA_NODO;
   for (let i = 0; i < n; i++) {
-    const a = dense[Math.max(0, i - 1)], b = dense[Math.min(n - 1, i + 1)];
-    let dx = b.x - a.x, dz = b.z - a.z;
-    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-    dirX[i] = dx; dirZ[i] = dz;
+    const q = dense[i];
+    const wrap = mitered && closed;
+    const ia = wrap ? (i === 0 || i === n - 1 ? n - 2 : i - 1)
+                    : Math.max(0, i - 1);
+    const ib = wrap ? (i === 0 || i === n - 1 ? 1 : i + 1)
+                    : Math.min(n - 1, i + 1);
+    const a = dense[ia], b = dense[ib];
+    let d0x = q.x - a.x, d0z = q.z - a.z;
+    let d1x = b.x - q.x, d1z = b.z - q.z;
+    let l0 = Math.hypot(d0x, d0z), l1 = Math.hypot(d1x, d1z);
+    if (l0 < 1e-9) { d0x = d1x; d0z = d1z; l0 = l1; }
+    if (l1 < 1e-9) { d1x = d0x; d1z = d0z; l1 = l0; }
+    l0 ||= 1; l1 ||= 1;
+    d0x /= l0; d0z /= l0; d1x /= l1; d1z /= l1;
 
-    // Sin mitre. Ensanchar la seccion en los vertices con 1/cos(t/2) corrige
-    // el angostamiento, pero en una via ancha revienta: la Escalinata Civica
-    // mide 40 m y con factor 2 la cinta se inflaba a 80 m, que es el abanico
-    // que aparecia en el monumento. El disco de union cubre la esquina sin
-    // deformar la seccion, asi que el mitre no hace falta.
+    let dx = b.x - a.x, dz = b.z - a.z;
+    let dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
     miter[i] = 1;
+
+    // Solo se activa para cintas peatonales angostas. Las calzadas conservan
+    // el perfil de main para no reintroducir ensanches en vias anchas.
+    if (mitered && (closed || (i > 0 && i < n - 1))) {
+      let tx = d0x + d1x, tz = d0z + d1z;
+      const tl = Math.hypot(tx, tz);
+      if (tl > 1e-6) {
+        tx /= tl; tz /= tl;
+        const mnx = -tz, mnz = tx;
+        const n0x = -d0z, n0z = d0x;
+        const denom = Math.abs(mnx * n0x + mnz * n0z);
+        dx = tx; dz = tz;
+        miter[i] = clamp(1 / Math.max(denom, 0.5), 1, 2);
+      }
+    }
+    dirX[i] = dx; dirZ[i] = dz;
     crudo[i] = pavementY(dense[i].x, dense[i].z);
   }
 
@@ -3081,8 +3140,8 @@ function roadProfile(pts, width) {
  * que el perfil transversal no quede plano en pendientes laterales, evitando que
  * el terreno devore la mitad alta de la calzada o vereda.
  */
-function ribbonArea(pts, width, off) {
-  const pr = roadProfile(pts, width);
+function ribbonArea(pts, width, off, mitered = false) {
+  const pr = roadProfile(pts, width, mitered);
   if (!pr) return null;
   const { dense, dirX, dirZ, miter, perfil, n, hw } = pr;
 
@@ -3254,16 +3313,100 @@ function convexHull(pts) {
  * trae la lista de nodos.
  */
 const REJILLA_NODO = 0.05;   // 5 cm: dos vertices del mismo nodo coinciden
+const claveNodo = q => Math.round(q.x / REJILLA_NODO) + '|' +
+                       Math.round(q.z / REJILLA_NODO);
+
+/** Une tramos peatonales consecutivos antes de ensanchar sus ejes. */
+function stitchPedestrianJobs(lineJobs) {
+  const unidos = [];
+  const grupos = new Map();
+  const estilo = l => {
+    const c = l.ls.casing;
+    return [l.ls.id, l.ls.width, l.ls.color, l.ls.off,
+            c?.color ?? '', c?.grow ?? '', c?.off ?? ''].join('|');
+  };
+  for (const l of lineJobs) {
+    const k = estilo(l);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(l);
+  }
+
+  for (const edges of grupos.values()) {
+    const nodos = new Map();
+    const extremo = (edge, start) => {
+      const key = claveNodo(edge.pts[start ? 0 : edge.pts.length - 1]);
+      if (!nodos.has(key)) nodos.set(key, []);
+      nodos.get(key).push({ edge, start });
+    };
+    for (const edge of edges) { extremo(edge, true); extremo(edge, false); }
+
+    const usados = new Set();
+    const seguir = (primero, desdeInicio) => {
+      const pts = desdeInicio ? primero.pts.slice() : primero.pts.slice().reverse();
+      usados.add(primero);
+      let fin = claveNodo(pts[pts.length - 1]);
+      while (true) {
+        const ramas = nodos.get(fin) || [];
+        if (ramas.length !== 2) break;
+        const sig = ramas.find(r => !usados.has(r.edge));
+        if (!sig) break;
+        const tramo = sig.start ? sig.edge.pts : sig.edge.pts.slice().reverse();
+        pts.push(...tramo.slice(1));
+        usados.add(sig.edge);
+        fin = claveNodo(pts[pts.length - 1]);
+      }
+      unidos.push({ pts, ls: primero.ls });
+    };
+
+    for (const edge of edges) {
+      if (usados.has(edge)) continue;
+      const a = claveNodo(edge.pts[0]);
+      const b = claveNodo(edge.pts[edge.pts.length - 1]);
+      if ((nodos.get(a)?.length ?? 0) !== 2) seguir(edge, true);
+      else if ((nodos.get(b)?.length ?? 0) !== 2) seguir(edge, false);
+    }
+    for (const edge of edges) if (!usados.has(edge)) seguir(edge, true);
+  }
+  return unidos;
+}
+
+/** Redondea cambios suaves sin desplazar los nodos de conexion. */
+function curatePedestrianLine(pts, maxCut = 1.5) {
+  if (pts.length < 3) return pts;
+  const closed = Math.hypot(pts[0].x - pts[pts.length - 1].x,
+                            pts[0].z - pts[pts.length - 1].z) < REJILLA_NODO;
+  const src = closed ? pts.slice(0, -1) : pts;
+  if (src.length < 3) return pts;
+
+  const out = closed ? [] : [src[0]];
+  const first = closed ? 0 : 1, last = closed ? src.length : src.length - 1;
+  for (let i = first; i < last; i++) {
+    const p = src[i];
+    const a = src[(i - 1 + src.length) % src.length];
+    const b = src[(i + 1) % src.length];
+    let inX = p.x - a.x, inZ = p.z - a.z;
+    let outX = b.x - p.x, outZ = b.z - p.z;
+    const lenIn = Math.hypot(inX, inZ), lenOut = Math.hypot(outX, outZ);
+    if (lenIn < 1e-6 || lenOut < 1e-6) { out.push(p); continue; }
+    inX /= lenIn; inZ /= lenIn; outX /= lenOut; outZ /= lenOut;
+    const dot = inX * outX + inZ * outZ;
+    if (dot < Math.SQRT1_2 || dot > 0.9999) { out.push(p); continue; }
+    const cut = Math.min(maxCut, lenIn * 0.25, lenOut * 0.25);
+    out.push({ x: p.x - inX * cut, z: p.z - inZ * cut },
+             { x: p.x + outX * cut, z: p.z + outZ * cut });
+  }
+  if (closed) out.push({ ...out[0] });
+  else out.push(src[src.length - 1]);
+  return out;
+}
 
 /** Ramas que salen de cada nodo compartido, agrupadas por capa. */
 function junctionBranches(lineJobs) {
   const nodos = new Map();
-  const clave = q => Math.round(q.x / REJILLA_NODO) + '|' +
-                     Math.round(q.z / REJILLA_NODO);
   for (const l of lineJobs) {
     if (l.ls.isStairs || l.ls.isCrossing || l.pts.length < 2) continue;
     for (let i = 0; i < l.pts.length; i++) {
-      const k = l.ls.id + '#' + clave(l.pts[i]);
+      const k = l.ls.id + '#' + claveNodo(l.pts[i]);
       let e = nodos.get(k);
       if (!e) nodos.set(k, e = { p: l.pts[i], ls: l.ls, vias: new Set(), ramas: [] });
       e.vias.add(l);
@@ -3343,6 +3486,73 @@ function junctionPatch(nodo, extra = 0) {
   const h = convexHull(todos);
   return h.length >= 3 ? h : null;
 }
+
+/** Empalme sectorial que conserva el ancho de cada camino peatonal. */
+function boundedPedestrianJunction(nodo, extra, off) {
+  const reach = Math.max(...nodo.ramas.map(r => r.hw + extra));
+  if (!(reach > 0)) return null;
+
+  const dirs = [];
+  const sameDirection = Math.cos(5 * Math.PI / 180);
+  for (const r of nodo.ramas) {
+    const prev = dirs.find(a => a.dx * r.dx + a.dz * r.dz >= sameDirection);
+    const dir = { dx: r.dx, dz: r.dz, hw: r.hw + extra, largo: r.largo,
+                  sumX: r.dx, sumZ: r.dz };
+    if (!prev) dirs.push(dir);
+    else {
+      prev.sumX += r.dx; prev.sumZ += r.dz;
+      const L = Math.hypot(prev.sumX, prev.sumZ) || 1;
+      prev.dx = prev.sumX / L; prev.dz = prev.sumZ / L;
+      prev.hw = Math.max(prev.hw, dir.hw);
+      prev.largo = Math.max(prev.largo, dir.largo);
+    }
+  }
+  dirs.sort((a, b) => Math.atan2(a.dz, a.dx) - Math.atan2(b.dz, b.dx));
+  if (dirs.length < 2) return null;
+
+  const ring = [];
+  const add = p => {
+    const q = ring[ring.length - 1];
+    if (!q || Math.hypot(q.x - p.x, q.z - p.z) > 1e-4) ring.push(p);
+  };
+  const cross = (ax, az, bx, bz) => ax * bz - az * bx;
+  const maxMiter = reach * 1.5;
+
+  for (let i = 0; i < dirs.length; i++) {
+    const a = dirs[i], b = dirs[(i + 1) % dirs.length];
+    let aa = Math.atan2(a.dz, a.dx), ab = Math.atan2(b.dz, b.dx);
+    if (ab <= aa) ab += Math.PI * 2;
+    const gap = ab - aa;
+    const pa = { x: nodo.p.x - a.dz * a.hw, z: nodo.p.z + a.dx * a.hw };
+    const pb = { x: nodo.p.x + b.dz * b.hw, z: nodo.p.z - b.dx * b.hw };
+    const den = cross(a.dx, a.dz, b.dx, b.dz);
+    let joined = false;
+    if (gap < Math.PI - 1e-4 && Math.abs(den) > 1e-6) {
+      const qx = pb.x - pa.x, qz = pb.z - pa.z;
+      const ta = cross(qx, qz, b.dx, b.dz) / den;
+      const x = pa.x + a.dx * ta, z = pa.z + a.dz * ta;
+      if (ta >= -1e-4 && Math.hypot(x - nodo.p.x, z - nodo.p.z) <= maxMiter) {
+        add({ x, z });
+        joined = true;
+      }
+    }
+    if (joined) continue;
+    if (gap >= Math.PI - 1e-4) {
+      add(pa); add({ x: nodo.p.x, z: nodo.p.z }); add(pb);
+    } else {
+      const da = Math.min(maxMiter, a.largo);
+      const db = Math.min(maxMiter, b.largo);
+      add({ x: pa.x + a.dx * da, z: pa.z + a.dz * da });
+      add({ x: pb.x + b.dx * db, z: pb.z + b.dz * db });
+    }
+  }
+  if (ring.length > 2 && Math.hypot(ring[0].x - ring[ring.length - 1].x,
+                                    ring[0].z - ring[ring.length - 1].z) < 1e-4)
+    ring.pop();
+  return ring.length >= 3 ? drapedArea(ring, [], off) : null;
+}
+
+const isPedestrianRibbon = id => id === 'vereda' || id === 'peaton_l';
 
 /**
  * Discos en los vertices de las vias (solo calzadas y veredas, NUNCA escaleras).
@@ -3819,6 +4029,7 @@ function processOSM(elements) {
     }
   }
 
+
   // Especificacion "Simple 3D Buildings" mejorada:
   // Un edificio SOLO se suprime si sus building:part cubren genuinamente su
   // superficie desde el suelo (min_height == 0) y la cobertura supera el 50%.
@@ -3933,19 +4144,33 @@ function buildSurfaces(jobs) {
     sb.add(a.st, drapedArea(a.outer, a.holes, a.st.off));
   }
 
+  // OSM corta un footway cuando cambia un atributo o atraviesa una calle.
+  // Para la superficie sigue siendo un solo eje: el tramo crossing se cose
+  // debajo del asfalto y la cebra visible se conserva como capa separada.
+  const crucesPeatonales = jobs.lineJobs.filter(l => l.ls.isCrossing);
+  const ejesPeatonales = jobs.lineJobs
+    .filter(l => isPedestrianRibbon(l.ls.id) || (l.ls.isCrossing && l.ls.underlay))
+    .map(l => l.ls.isCrossing ? { pts: l.pts, ls: l.ls.underlay } : l);
+  const peatonalesCosidos = stitchPedestrianJobs(ejesPeatonales)
+    .map(l => ({ ...l, pts: curatePedestrianLine(l.pts) }));
+  const lineas = jobs.lineJobs
+    .filter(l => !l.ls.isCrossing && !isPedestrianRibbon(l.ls.id))
+    .concat(peatonalesCosidos);
+
   // Los cruces se resuelven una sola vez y sirven para el borde y para el
   // relleno: el mismo poligono, con el borde un poco mas ancho.
-  const cruces = junctionBranches(jobs.lineJobs);
+  const cruces = junctionBranches(lineas);
 
   // 1. Bordes/casings: solo para calzadas, veredas y sendas comunes (NUNCA escaleras ni cebras)
-  for (const l of jobs.lineJobs) {
+  for (const l of lineas) {
     if (l.pts.length < 2) continue;
     if (l.ls.isStairs || l.ls.isCrossing) continue;
     const c = l.ls.casing;
     if (!c) continue;
     const estilo = { id: l.ls.id + '·borde', color: c.color, off: c.off, quiet: true };
-    sb.add(estilo, ribbonArea(l.pts, l.ls.width + c.grow, c.off));
-    sb.add(estilo, jointDiscs(l.pts, l.ls.width + c.grow, c.off));
+    const peatonal = isPedestrianRibbon(l.ls.id);
+    sb.add(estilo, ribbonArea(l.pts, l.ls.width + c.grow, c.off, peatonal));
+    if (!peatonal) sb.add(estilo, jointDiscs(l.pts, l.ls.width + c.grow, c.off));
   }
   for (const n of cruces) {
     const c = n.ls.casing;
@@ -3954,20 +4179,32 @@ function buildSurfaces(jobs) {
     // llego al nodo: con el grow del mas angosto, el cordon de la calle ancha
     // sobresale del parche y deja un escalon. Medido: 9 de 66 cruces.
     const grow = Math.max(c.grow, ...n.ramas.map(r => r.grow || 0));
+    if (isPedestrianRibbon(n.ls.id)) {
+      const geo = boundedPedestrianJunction(n, grow / 2, c.off);
+      if (geo) sb.add({ id: n.ls.id + '·borde', color: c.color, off: c.off,
+                        quiet: true }, geo);
+      continue;
+    }
     const anillo = junctionPatch(n, grow / 2);
     if (anillo) sb.add({ id: n.ls.id + '·borde', color: c.color, off: c.off,
                          quiet: true }, drapedArea(anillo, [], c.off));
   }
 
   // 2. Relleno principal de calzadas, veredas y paseos (no escaleras ni cebras)
-  for (const l of jobs.lineJobs) {
+  for (const l of lineas) {
     if (l.pts.length < 2) continue;
     if (l.ls.isStairs || l.ls.isCrossing) continue;
-    sb.add(l.ls, ribbonArea(l.pts, l.ls.width, l.ls.off));
-    sb.add(l.ls, jointDiscs(l.pts, l.ls.width, l.ls.off));
+    const peatonal = isPedestrianRibbon(l.ls.id);
+    sb.add(l.ls, ribbonArea(l.pts, l.ls.width, l.ls.off, peatonal));
+    if (!peatonal) sb.add(l.ls, jointDiscs(l.pts, l.ls.width, l.ls.off));
   }
   let empalmes = 0;
   for (const n of cruces) {
+    if (isPedestrianRibbon(n.ls.id)) {
+      const geo = boundedPedestrianJunction(n, 0, n.ls.off);
+      if (geo) { sb.add(n.ls, geo); empalmes++; }
+      continue;
+    }
     const anillo = junctionPatch(n, 0);
     if (!anillo) continue;
     const geo = drapedArea(anillo, [], n.ls.off);
@@ -3975,7 +4212,7 @@ function buildSurfaces(jobs) {
   }
 
   // 3. Escaleras rectas (stairwayArea) sin discos circulares y con peldaños ortogonales
-  for (const l of jobs.lineJobs) {
+  for (const l of lineas) {
     if (!l.ls.isStairs || l.pts.length < 2) continue;
     const c = l.ls.casing;
     if (c) {
@@ -3990,7 +4227,7 @@ function buildSurfaces(jobs) {
   }
 
   // 4. Señalizacion vial F4maps: lineas centrales discontinuas en calzadas principales
-  for (const l of jobs.lineJobs) {
+  for (const l of lineas) {
     if (!l.ls.markings || l.pts.length < 2) continue;
     sb.add({ id: 'marcas_calzada', color: 0xf2f2f2, off: l.ls.off + 0.008, quiet: true },
            roadCenterMarkings(l.pts, l.ls.off + 0.008));
@@ -3998,8 +4235,8 @@ function buildSurfaces(jobs) {
 
   // 5. Señalizacion vial F4maps: pasos de cebra peatonales (footway=crossing)
   const calzadasParaCruce = jobs.lineJobs.filter(l => l.ls.id === 'calzada');
-  for (const l of jobs.lineJobs) {
-    if (!l.ls.isCrossing || l.pts.length < 2) continue;
+  for (const l of crucesPeatonales) {
+    if (l.pts.length < 2) continue;
     // +0.022 sobre la calzada para evitar z-fighting y que las franjas sean visibles
     sb.add({ id: 'paso_cebra', color: 0xf5f5f5, off: l.ls.off + 0.022, quiet: true },
            zebraCrossingArea(l.pts, l.ls.width, l.ls.off + 0.022, calzadasParaCruce));
@@ -4163,7 +4400,7 @@ function applyRubble() {
   const col = new Float32Array(pos.count * 3);
   const R = CFG.rubble;
 
-  const LIMPIO = hexToRgb01(R.cleanColor); // suelo base, elegible desde el HUD
+  const LIMPIO = hexToRgb01(CLEAN_GROUND_COLOR);
   const TIERRA = [0.55, 0.44, 0.30];   // sedimento seco (tierra rica)
   const MALEZA = [0.38, 0.52, 0.24];   // vegetacion tomada (verde intenso)
 
@@ -4211,6 +4448,7 @@ function applyRubble() {
  * exactamente donde se acumulo material y deja peladas las zonas barridas.
  */
 const gGrass = new THREE.Group();
+gGrass.visible = false;
 scene.add(gGrass);
 let grassMesh = null, grassSeed = null;
 const grassTime = { value: 0 };
@@ -4990,13 +5228,6 @@ rRub.onchange = () => {
   CFG.rubble.amount = parseFloat(rRub.value) / 100;
   ui.set('acumulando sedimento …');
   requestAnimationFrame(() => { rebuildAll(); ui.set('listo', 'ok'); });
-};
-
-const rCleanColor = document.getElementById('r-cleancolor');
-rCleanColor.oninput = () => {
-  CFG.rubble.cleanColor = rCleanColor.value;
-  document.getElementById('r-cleancolor-v').textContent = rCleanColor.value;
-  applyRubble();
 };
 
 const rFlat = document.getElementById('r-flat');
